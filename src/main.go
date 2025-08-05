@@ -94,7 +94,7 @@ func main() {
 		fmt.Printf("Starting server in SSE mode on %s...\n", address)
 
 		// Create SSE server
-		sse := server.NewSSEServer(mcpServer, "/sse")
+		sse := server.NewSSEServer(mcpServer)
 
 		// Start server in a goroutine
 		go func() {

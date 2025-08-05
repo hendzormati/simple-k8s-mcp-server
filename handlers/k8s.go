@@ -9,6 +9,34 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// Helper function to safely get arguments as map
+func getArguments(request mcp.CallToolRequest) map[string]interface{} {
+	if request.Params.Arguments == nil {
+		return make(map[string]interface{})
+	}
+
+	if args, ok := request.Params.Arguments.(map[string]interface{}); ok {
+		return args
+	}
+
+	return make(map[string]interface{})
+}
+
+// Helper function to parse JSON string to map[string]string
+func parseJSONStringToMap(jsonStr string) (map[string]string, error) {
+	if jsonStr == "" {
+		return nil, nil
+	}
+
+	var result map[string]string
+	err := json.Unmarshal([]byte(jsonStr), &result)
+	if err != nil {
+		return nil, fmt.Errorf("invalid JSON format: %v", err)
+	}
+
+	return result, nil
+}
+
 // ListPods returns a handler function for the listPods tool
 func ListPods(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -17,11 +45,8 @@ func ListPods(client *k8s.Client) func(ctx context.Context, request mcp.CallTool
 			return nil, fmt.Errorf("Kubernetes client not available - please configure a Kubernetes cluster")
 		}
 
-		// Extract arguments from the request (no type assertion needed)
-		args := request.Params.Arguments
-		if args == nil {
-			args = make(map[string]interface{})
-		}
+		// Extract arguments from the request
+		args := getArguments(request)
 
 		// Get namespace argument (default to "default")
 		namespace := "default"
@@ -95,8 +120,8 @@ func GetNamespace(client *k8s.Client) func(ctx context.Context, request mcp.Call
 		}
 
 		// Extract arguments
-		args := request.Params.Arguments
-		if args == nil {
+		args := getArguments(request)
+		if len(args) == 0 {
 			return nil, fmt.Errorf("missing arguments")
 		}
 
@@ -135,8 +160,8 @@ func CreateNamespace(client *k8s.Client) func(ctx context.Context, request mcp.C
 		}
 
 		// Extract arguments
-		args := request.Params.Arguments
-		if args == nil {
+		args := getArguments(request)
+		if len(args) == 0 {
 			return nil, fmt.Errorf("missing arguments")
 		}
 
@@ -150,29 +175,27 @@ func CreateNamespace(client *k8s.Client) func(ctx context.Context, request mcp.C
 			return nil, fmt.Errorf("name must be a non-empty string")
 		}
 
-		// Get optional labels
+		// Get optional labels (parse from JSON string)
 		var labels map[string]string
 		if labelsArg, exists := args["labels"]; exists {
-			if labelsMap, ok := labelsArg.(map[string]interface{}); ok {
-				labels = make(map[string]string)
-				for k, v := range labelsMap {
-					if vStr, ok := v.(string); ok {
-						labels[k] = vStr
-					}
+			if labelsStr, ok := labelsArg.(string); ok && labelsStr != "" {
+				parsedLabels, err := parseJSONStringToMap(labelsStr)
+				if err != nil {
+					return nil, fmt.Errorf("invalid labels JSON: %v", err)
 				}
+				labels = parsedLabels
 			}
 		}
 
-		// Get optional annotations
+		// Get optional annotations (parse from JSON string)
 		var annotations map[string]string
 		if annotationsArg, exists := args["annotations"]; exists {
-			if annotationsMap, ok := annotationsArg.(map[string]interface{}); ok {
-				annotations = make(map[string]string)
-				for k, v := range annotationsMap {
-					if vStr, ok := v.(string); ok {
-						annotations[k] = vStr
-					}
+			if annotationsStr, ok := annotationsArg.(string); ok && annotationsStr != "" {
+				parsedAnnotations, err := parseJSONStringToMap(annotationsStr)
+				if err != nil {
+					return nil, fmt.Errorf("invalid annotations JSON: %v", err)
 				}
+				annotations = parsedAnnotations
 			}
 		}
 
@@ -201,8 +224,8 @@ func UpdateNamespace(client *k8s.Client) func(ctx context.Context, request mcp.C
 		}
 
 		// Extract arguments
-		args := request.Params.Arguments
-		if args == nil {
+		args := getArguments(request)
+		if len(args) == 0 {
 			return nil, fmt.Errorf("missing arguments")
 		}
 
@@ -216,29 +239,27 @@ func UpdateNamespace(client *k8s.Client) func(ctx context.Context, request mcp.C
 			return nil, fmt.Errorf("name must be a non-empty string")
 		}
 
-		// Get optional labels
+		// Get optional labels (parse from JSON string)
 		var labels map[string]string
 		if labelsArg, exists := args["labels"]; exists {
-			if labelsMap, ok := labelsArg.(map[string]interface{}); ok {
-				labels = make(map[string]string)
-				for k, v := range labelsMap {
-					if vStr, ok := v.(string); ok {
-						labels[k] = vStr
-					}
+			if labelsStr, ok := labelsArg.(string); ok && labelsStr != "" {
+				parsedLabels, err := parseJSONStringToMap(labelsStr)
+				if err != nil {
+					return nil, fmt.Errorf("invalid labels JSON: %v", err)
 				}
+				labels = parsedLabels
 			}
 		}
 
-		// Get optional annotations
+		// Get optional annotations (parse from JSON string)
 		var annotations map[string]string
 		if annotationsArg, exists := args["annotations"]; exists {
-			if annotationsMap, ok := annotationsArg.(map[string]interface{}); ok {
-				annotations = make(map[string]string)
-				for k, v := range annotationsMap {
-					if vStr, ok := v.(string); ok {
-						annotations[k] = vStr
-					}
+			if annotationsStr, ok := annotationsArg.(string); ok && annotationsStr != "" {
+				parsedAnnotations, err := parseJSONStringToMap(annotationsStr)
+				if err != nil {
+					return nil, fmt.Errorf("invalid annotations JSON: %v", err)
 				}
+				annotations = parsedAnnotations
 			}
 		}
 
@@ -267,8 +288,8 @@ func DeleteNamespace(client *k8s.Client) func(ctx context.Context, request mcp.C
 		}
 
 		// Extract arguments
-		args := request.Params.Arguments
-		if args == nil {
+		args := getArguments(request)
+		if len(args) == 0 {
 			return nil, fmt.Errorf("missing arguments")
 		}
 
@@ -314,8 +335,8 @@ func GetNamespaceResourceQuota(client *k8s.Client) func(ctx context.Context, req
 		}
 
 		// Extract arguments
-		args := request.Params.Arguments
-		if args == nil {
+		args := getArguments(request)
+		if len(args) == 0 {
 			return nil, fmt.Errorf("missing arguments")
 		}
 
