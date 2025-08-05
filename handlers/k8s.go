@@ -42,7 +42,7 @@ func ListPods(client *k8s.Client) func(ctx context.Context, request mcp.CallTool
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		// Check if Kubernetes client is available
 		if client == nil {
-			return nil, fmt.Errorf("Kubernetes client not available - please configure a Kubernetes cluster")
+			return nil, fmt.Errorf("kubernetes client not available - please configure a Kubernetes cluster")
 		}
 
 		// Extract arguments from the request
@@ -86,7 +86,7 @@ func ListNamespaces(client *k8s.Client) func(ctx context.Context, request mcp.Ca
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		// Check if Kubernetes client is available
 		if client == nil {
-			return nil, fmt.Errorf("Kubernetes client not available - please configure a Kubernetes cluster")
+			return nil, fmt.Errorf("kubernetes client not available - please configure a Kubernetes cluster")
 		}
 
 		// List namespaces
@@ -116,7 +116,7 @@ func GetNamespace(client *k8s.Client) func(ctx context.Context, request mcp.Call
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		// Check if Kubernetes client is available
 		if client == nil {
-			return nil, fmt.Errorf("Kubernetes client not available - please configure a Kubernetes cluster")
+			return nil, fmt.Errorf("kubernetes client not available - please configure a Kubernetes cluster")
 		}
 
 		// Extract arguments
@@ -156,7 +156,7 @@ func CreateNamespace(client *k8s.Client) func(ctx context.Context, request mcp.C
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		// Check if Kubernetes client is available
 		if client == nil {
-			return nil, fmt.Errorf("Kubernetes client not available - please configure a Kubernetes cluster")
+			return nil, fmt.Errorf("kubernetes client not available - please configure a Kubernetes cluster")
 		}
 
 		// Extract arguments
@@ -220,7 +220,7 @@ func UpdateNamespace(client *k8s.Client) func(ctx context.Context, request mcp.C
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		// Check if Kubernetes client is available
 		if client == nil {
-			return nil, fmt.Errorf("Kubernetes client not available - please configure a Kubernetes cluster")
+			return nil, fmt.Errorf("kubernetes client not available - please configure a Kubernetes cluster")
 		}
 
 		// Extract arguments
@@ -284,7 +284,7 @@ func DeleteNamespace(client *k8s.Client) func(ctx context.Context, request mcp.C
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		// Check if Kubernetes client is available
 		if client == nil {
-			return nil, fmt.Errorf("Kubernetes client not available - please configure a Kubernetes cluster")
+			return nil, fmt.Errorf("kubernetes client not available - please configure a Kubernetes cluster")
 		}
 
 		// Extract arguments
@@ -331,7 +331,7 @@ func GetNamespaceResourceQuota(client *k8s.Client) func(ctx context.Context, req
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		// Check if Kubernetes client is available
 		if client == nil {
-			return nil, fmt.Errorf("Kubernetes client not available - please configure a Kubernetes cluster")
+			return nil, fmt.Errorf("kubernetes client not available - please configure a Kubernetes cluster")
 		}
 
 		// Extract arguments
