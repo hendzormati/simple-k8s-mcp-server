@@ -1,8 +1,10 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/hendzormati/simple-k8s-mcp-server/handlers"
 	"github.com/hendzormati/simple-k8s-mcp-server/pkg/k8s"
@@ -10,8 +12,26 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// getEnvOrDefault returns the value of the environment variable or the default value if not set
+func getEnvOrDefault(key, defaultValue string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return defaultValue
+}
+
 func main() {
 	fmt.Println("Starting simple K8s MCP server...")
+
+	// Parse command line flags
+	var mode string
+	var port string
+	var host string
+
+	flag.StringVar(&port, "port", getEnvOrDefault("SERVER_PORT", "8080"), "Server port")
+	flag.StringVar(&host, "host", getEnvOrDefault("SERVER_HOST", "localhost"), "Server host address")
+	flag.StringVar(&mode, "mode", getEnvOrDefault("SERVER_MODE", "stdio"), "Server mode: 'stdio' or 'sse'")
+	flag.Parse()
 
 	// Initialize Kubernetes client (with graceful error handling)
 	k8sClient, err := k8s.NewClient()
@@ -33,6 +53,7 @@ func main() {
 	mcpServer := server.NewMCPServer(
 		"Simple K8s MCP Server",
 		"1.0.0",
+		server.WithResourceCapabilities(true, true), // Enable resource listing and subscription capabilities
 	)
 
 	// Register Pod tools
@@ -57,10 +78,27 @@ func main() {
 	fmt.Println("    - deleteNamespace: Delete a namespace")
 	fmt.Println("    - getNamespaceResourceQuota: Get resource quotas for a namespace")
 	fmt.Println()
-	fmt.Println("Server is ready and listening for MCP protocol messages...")
 
-	// Start server in stdio mode (for MCP protocol)
-	if err := server.ServeStdio(mcpServer); err != nil {
-		log.Fatalf("Failed to start MCP server: %v", err)
+	// Start server based on mode
+	switch mode {
+	case "stdio":
+		fmt.Println("Starting server in stdio mode...")
+		fmt.Println("Server is ready and listening for MCP protocol messages...")
+		if err := server.ServeStdio(mcpServer); err != nil {
+			log.Fatalf("Failed to start stdio server: %v", err)
+		}
+	case "sse":
+		address := fmt.Sprintf("%s:%s", host, port)
+		fmt.Printf("Starting server in SSE mode on %s...\n", address)
+		// Fix: NewSSEServer requires two arguments - the MCP server and a path/endpoint
+		sse := server.NewSSEServer(mcpServer, "/sse")
+		if err := sse.Start(address); err != nil {
+			fmt.Printf("Failed to start SSE server: %v\n", err)
+			return
+		}
+		fmt.Printf("SSE server started on %s\n", address)
+	default:
+		fmt.Printf("Unknown server mode: %s. Use 'stdio' or 'sse'.\n", mode)
+		return
 	}
 }
