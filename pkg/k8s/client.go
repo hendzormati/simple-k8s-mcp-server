@@ -17,19 +17,16 @@ type Client struct {
 
 // NewClient creates a new Kubernetes client
 func NewClient() (*Client, error) {
-    // Try to get kubeconfig from home directory
     var kubeconfig string
     if home := homedir.HomeDir(); home != "" {
         kubeconfig = filepath.Join(home, ".kube", "config")
     }
 
-    // Build config from kubeconfig file
     config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
     if err != nil {
         return nil, fmt.Errorf("failed to create config: %v", err)
     }
 
-    // Create clientset
     clientset, err := kubernetes.NewForConfig(config)
     if err != nil {
         return nil, fmt.Errorf("failed to create clientset: %v", err)
@@ -38,9 +35,14 @@ func NewClient() (*Client, error) {
     return &Client{clientset: clientset}, nil
 }
 
-// GetPods returns all pods in the default namespace
+// GetPods returns all pods in the default namespace (for backwards compatibility)
 func (c *Client) GetPods() ([]string, error) {
-    pods, err := c.clientset.CoreV1().Pods("default").List(context.TODO(), metav1.ListOptions{})
+    return c.GetPodsInNamespace("default")
+}
+
+// GetPodsInNamespace returns all pods in the specified namespace
+func (c *Client) GetPodsInNamespace(namespace string) ([]string, error) {
+    pods, err := c.clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
     if err != nil {
         return nil, fmt.Errorf("failed to get pods: %v", err)
     }
