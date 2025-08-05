@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/hendzormati/simple-k8s-mcp-server/handlers"
 	"github.com/hendzormati/simple-k8s-mcp-server/pkg/k8s"
@@ -90,13 +92,31 @@ func main() {
 	case "sse":
 		address := fmt.Sprintf("%s:%s", host, port)
 		fmt.Printf("Starting server in SSE mode on %s...\n", address)
-		// Fix: NewSSEServer requires two arguments - the MCP server and a path/endpoint
+
+		// Create SSE server
 		sse := server.NewSSEServer(mcpServer, "/sse")
-		if err := sse.Start(address); err != nil {
-			fmt.Printf("Failed to start SSE server: %v\n", err)
-			return
-		}
+
+		// Start server in a goroutine
+		go func() {
+			if err := sse.Start(address); err != nil {
+				log.Printf("Failed to start SSE server: %v", err)
+				os.Exit(1)
+			}
+		}()
+
 		fmt.Printf("SSE server started on %s\n", address)
+		fmt.Printf("Connect to: http://%s/sse\n", address)
+		fmt.Printf("Message endpoint: http://%s/sse/message?sessionId=<session-id>\n", address)
+		fmt.Println("Press Ctrl+C to stop the server...")
+
+		// Set up signal handling for graceful shutdown
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+		// Block until we receive a signal
+		<-c
+		fmt.Println("\nShutting down server...")
+
 	default:
 		fmt.Printf("Unknown server mode: %s. Use 'stdio' or 'sse'.\n", mode)
 		return
