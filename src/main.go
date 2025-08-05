@@ -5,7 +5,7 @@ import (
     "fmt"
     "log"
     "net/http"
-    "github.com/simple-k8s-mcp-server/src/pkg/k8s"
+    "github.com/hendzormati/simple-k8s-mcp-server/pkg/k8s"
 )
 
 var k8sClient *k8s.Client
