@@ -3,6 +3,7 @@ package k8s
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -572,4 +573,95 @@ func getVolumeInfo(pod *corev1.Pod) []map[string]interface{} {
 		volumes = append(volumes, volumeInfo)
 	}
 	return volumes
+}
+
+// CreatePod creates a new pod from a JSON manifest
+func (c *Client) CreatePod(ctx context.Context, namespace string, podManifest string) (map[string]interface{}, error) {
+	// Parse the JSON manifest
+	var pod corev1.Pod
+	err := json.Unmarshal([]byte(podManifest), &pod)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse pod manifest: %v", err)
+	}
+
+	// Ensure the namespace is set correctly
+	if pod.Namespace == "" {
+		pod.Namespace = namespace
+	}
+	if pod.Namespace != namespace {
+		return nil, fmt.Errorf("pod namespace '%s' does not match target namespace '%s'", pod.Namespace, namespace)
+	}
+
+	// Create the pod
+	createdPod, err := c.clientset.CoreV1().Pods(namespace).Create(ctx, &pod, metav1.CreateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pod: %v", err)
+	}
+
+	// Return the created pod information
+	result := map[string]interface{}{
+		"name":              createdPod.Name,
+		"namespace":         createdPod.Namespace,
+		"status":            string(createdPod.Status.Phase),
+		"nodeName":          createdPod.Spec.NodeName,
+		"creationTimestamp": createdPod.CreationTimestamp.Time,
+		"labels":            createdPod.Labels,
+		"annotations":       createdPod.Annotations,
+		"containers":        getContainerInfo(createdPod),
+		"resourceVersion":   createdPod.ResourceVersion,
+		"uid":               string(createdPod.UID),
+	}
+
+	return result, nil
+}
+
+// UpdatePod updates an existing pod (limited to labels and annotations)
+func (c *Client) UpdatePod(ctx context.Context, namespace, name string, labels, annotations map[string]string) (map[string]interface{}, error) {
+	// Get the current pod
+	pod, err := c.clientset.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pod '%s' in namespace '%s': %v", name, namespace, err)
+	}
+
+	// Update labels if provided
+	if labels != nil {
+		if pod.Labels == nil {
+			pod.Labels = make(map[string]string)
+		}
+		for k, v := range labels {
+			pod.Labels[k] = v
+		}
+	}
+
+	// Update annotations if provided
+	if annotations != nil {
+		if pod.Annotations == nil {
+			pod.Annotations = make(map[string]string)
+		}
+		for k, v := range annotations {
+			pod.Annotations[k] = v
+		}
+	}
+
+	// Apply the update
+	updatedPod, err := c.clientset.CoreV1().Pods(namespace).Update(ctx, pod, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update pod '%s' in namespace '%s': %v", name, namespace, err)
+	}
+
+	// Return the updated pod information
+	result := map[string]interface{}{
+		"name":              updatedPod.Name,
+		"namespace":         updatedPod.Namespace,
+		"status":            string(updatedPod.Status.Phase),
+		"nodeName":          updatedPod.Spec.NodeName,
+		"creationTimestamp": updatedPod.CreationTimestamp.Time,
+		"labels":            updatedPod.Labels,
+		"annotations":       updatedPod.Annotations,
+		"containers":        getContainerInfo(updatedPod),
+		"resourceVersion":   updatedPod.ResourceVersion,
+		"uid":               string(updatedPod.UID),
+	}
+
+	return result, nil
 }

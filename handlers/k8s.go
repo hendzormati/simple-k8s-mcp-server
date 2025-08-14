@@ -913,3 +913,131 @@ func GetPodMetrics(client *k8s.Client) func(ctx context.Context, request mcp.Cal
 		return mcp.NewToolResultText(string(jsonResponse)), nil
 	}
 }
+
+// CreatePod returns a handler function for the createPod tool
+func CreatePod(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("Kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		// Get required namespace
+		namespace, exists := args["namespace"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: namespace")
+		}
+		namespaceStr, ok := namespace.(string)
+		if !ok || namespaceStr == "" {
+			return nil, fmt.Errorf("namespace must be a non-empty string")
+		}
+
+		// Get required manifest
+		manifest, exists := args["manifest"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: manifest")
+		}
+		manifestStr, ok := manifest.(string)
+		if !ok || manifestStr == "" {
+			return nil, fmt.Errorf("manifest must be a non-empty string")
+		}
+
+		// Create the pod
+		pod, err := client.CreatePod(ctx, namespaceStr, manifestStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create pod: %v", err)
+		}
+
+		response := map[string]interface{}{
+			"message": fmt.Sprintf("Pod '%s' created successfully in namespace '%s'", pod["name"], namespaceStr),
+			"pod":     pod,
+			"status":  "created",
+		}
+
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// UpdatePod returns a handler function for the updatePod tool
+func UpdatePod(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("Kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		// Get required arguments
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
+
+		namespace, exists := args["namespace"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: namespace")
+		}
+		namespaceStr, ok := namespace.(string)
+		if !ok || namespaceStr == "" {
+			return nil, fmt.Errorf("namespace must be a non-empty string")
+		}
+
+		// Get optional labels (parse from JSON string)
+		var labels map[string]string
+		if labelsArg, exists := args["labels"]; exists {
+			if labelsStr, ok := labelsArg.(string); ok && labelsStr != "" {
+				parsedLabels, err := parseJSONStringToMap(labelsStr)
+				if err != nil {
+					return nil, fmt.Errorf("invalid labels JSON: %v", err)
+				}
+				labels = parsedLabels
+			}
+		}
+
+		// Get optional annotations (parse from JSON string)
+		var annotations map[string]string
+		if annotationsArg, exists := args["annotations"]; exists {
+			if annotationsStr, ok := annotationsArg.(string); ok && annotationsStr != "" {
+				parsedAnnotations, err := parseJSONStringToMap(annotationsStr)
+				if err != nil {
+					return nil, fmt.Errorf("invalid annotations JSON: %v", err)
+				}
+				annotations = parsedAnnotations
+			}
+		}
+
+		// Check if at least one update is provided
+		if labels == nil && annotations == nil {
+			return nil, fmt.Errorf("at least one of 'labels' or 'annotations' must be provided")
+		}
+
+		// Update the pod
+		pod, err := client.UpdatePod(ctx, namespaceStr, nameStr, labels, annotations)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update pod: %v", err)
+		}
+
+		response := map[string]interface{}{
+			"message": fmt.Sprintf("Pod '%s' in namespace '%s' updated successfully", nameStr, namespaceStr),
+			"pod":     pod,
+			"status":  "updated",
+		}
+
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}

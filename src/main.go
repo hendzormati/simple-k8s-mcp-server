@@ -67,6 +67,8 @@ func main() {
 	mcpServer.AddTool(tools.DeletePodTool(), handlers.DeletePod(k8sClient))
 	mcpServer.AddTool(tools.GetPodEventsTool(), handlers.GetPodEvents(k8sClient))
 	mcpServer.AddTool(tools.RestartPodTool(), handlers.RestartPod(k8sClient))
+	mcpServer.AddTool(tools.CreatePodTool(), handlers.CreatePod(k8sClient)) // Add this line
+	mcpServer.AddTool(tools.UpdatePodTool(), handlers.UpdatePod(k8sClient)) // Add this line
 
 	// Register Namespace tools
 	mcpServer.AddTool(tools.ListNamespacesTool(), handlers.ListNamespaces(k8sClient))
@@ -90,6 +92,8 @@ func main() {
 	fmt.Println("    - deletePod: Delete a specific pod")
 	fmt.Println("    - getPodEvents: Get events related to a pod")
 	fmt.Println("    - restartPod: Restart a pod by deleting it")
+	fmt.Println("    - createPod: Create a new pod from JSON manifest") // Add this line
+	fmt.Println("    - updatePod: Update pod labels and annotations")   // Add this line
 	fmt.Println("  Namespace Tools:")
 	fmt.Println("    - listNamespaces: List all namespaces")
 	fmt.Println("    - getNamespace: Get detailed namespace information")

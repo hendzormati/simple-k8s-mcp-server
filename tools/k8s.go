@@ -178,3 +178,25 @@ func RestartPodTool() mcp.Tool {
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace of the pod")),
 	)
 }
+
+// CreatePodTool creates a tool for creating a new pod
+func CreatePodTool() mcp.Tool {
+	return mcp.NewTool(
+		"createPod",
+		mcp.WithDescription("Create a new pod from a JSON manifest"),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace where the pod will be created")),
+		mcp.WithString("manifest", mcp.Required(), mcp.Description("The pod manifest in JSON format (e.g., '{\"apiVersion\":\"v1\",\"kind\":\"Pod\",\"metadata\":{\"name\":\"my-pod\"},\"spec\":{\"containers\":[{\"name\":\"nginx\",\"image\":\"nginx:latest\"}]}}')")),
+	)
+}
+
+// UpdatePodTool creates a tool for updating pod metadata
+func UpdatePodTool() mcp.Tool {
+	return mcp.NewTool(
+		"updatePod",
+		mcp.WithDescription("Update pod labels and annotations (Note: Pod specs are generally immutable after creation)"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the pod to update")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace of the pod")),
+		mcp.WithString("labels", mcp.Description("Optional labels to add/update in JSON format (e.g., '{\"env\":\"prod\",\"version\":\"v2\"}')")),
+		mcp.WithString("annotations", mcp.Description("Optional annotations to add/update in JSON format (e.g., '{\"description\":\"Updated pod\",\"owner\":\"team-a\"}')")),
+	)
+}
