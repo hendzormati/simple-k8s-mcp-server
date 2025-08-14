@@ -1,8 +1,10 @@
 package k8s
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"path/filepath"
 
 	corev1 "k8s.io/api/core/v1"
@@ -34,26 +36,6 @@ func NewClient() (*Client, error) {
 	}
 
 	return &Client{clientset: clientset}, nil
-}
-
-// GetPods returns all pods in the default namespace (for backwards compatibility)
-func (c *Client) GetPods() ([]string, error) {
-	return c.GetPodsInNamespace("default")
-}
-
-// GetPodsInNamespace returns all pods in the specified namespace
-func (c *Client) GetPodsInNamespace(namespace string) ([]string, error) {
-	pods, err := c.clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get pods: %v", err)
-	}
-
-	var podNames []string
-	for _, pod := range pods.Items {
-		podNames = append(podNames, pod.Name)
-	}
-
-	return podNames, nil
 }
 
 // TestConnection tests if we can connect to the cluster
@@ -340,4 +322,254 @@ func (c *Client) ForceDeleteNamespace(ctx context.Context, name string) error {
 
 	// If it's not terminating, try regular delete
 	return c.DeleteNamespace(ctx, name)
+}
+
+// ========== POD OPERATIONS ==========
+// GetPodsInNamespace returns detailed pod information in the specified namespace
+func (c *Client) GetPodsInNamespace(namespace string) ([]map[string]interface{}, error) {
+	pods, err := c.clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pods: %v", err)
+	}
+
+	var result []map[string]interface{}
+	for _, pod := range pods.Items {
+		podInfo := map[string]interface{}{
+			"name":              pod.Name,
+			"namespace":         pod.Namespace,
+			"status":            string(pod.Status.Phase),
+			"nodeName":          pod.Spec.NodeName,
+			"creationTimestamp": pod.CreationTimestamp.Time,
+			"labels":            pod.Labels,
+			"annotations":       pod.Annotations,
+			"restartCount":      getPodRestartCount(&pod),
+			"ready":             isPodReady(&pod),
+			"containers":        getContainerInfo(&pod),
+		}
+		result = append(result, podInfo)
+	}
+
+	return result, nil
+}
+
+// GetPodsInNamespaceWithSelector returns pods filtered by label selector
+func (c *Client) GetPodsInNamespaceWithSelector(namespace, labelSelector string) ([]map[string]interface{}, error) {
+	listOptions := metav1.ListOptions{}
+	if labelSelector != "" {
+		listOptions.LabelSelector = labelSelector
+	}
+
+	pods, err := c.clientset.CoreV1().Pods(namespace).List(context.TODO(), listOptions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pods: %v", err)
+	}
+
+	var result []map[string]interface{}
+	for _, pod := range pods.Items {
+		podInfo := map[string]interface{}{
+			"name":              pod.Name,
+			"namespace":         pod.Namespace,
+			"status":            string(pod.Status.Phase),
+			"nodeName":          pod.Spec.NodeName,
+			"creationTimestamp": pod.CreationTimestamp.Time,
+			"labels":            pod.Labels,
+			"annotations":       pod.Annotations,
+			"restartCount":      getPodRestartCount(&pod),
+			"ready":             isPodReady(&pod),
+			"containers":        getContainerInfo(&pod),
+		}
+		result = append(result, podInfo)
+	}
+
+	return result, nil
+}
+
+// GetPod returns detailed information about a specific pod
+func (c *Client) GetPod(ctx context.Context, namespace, name string) (map[string]interface{}, error) {
+	pod, err := c.clientset.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pod '%s' in namespace '%s': %v", name, namespace, err)
+	}
+
+	result := map[string]interface{}{
+		"name":              pod.Name,
+		"namespace":         pod.Namespace,
+		"status":            string(pod.Status.Phase),
+		"statusMessage":     pod.Status.Message,
+		"nodeName":          pod.Spec.NodeName,
+		"hostIP":            pod.Status.HostIP,
+		"podIP":             pod.Status.PodIP,
+		"creationTimestamp": pod.CreationTimestamp.Time,
+		"labels":            pod.Labels,
+		"annotations":       pod.Annotations,
+		"restartCount":      getPodRestartCount(pod),
+		"ready":             isPodReady(pod),
+		"containers":        getContainerInfo(pod),
+		"conditions":        getPodConditions(pod),
+		"volumes":           getVolumeInfo(pod),
+		"resourceVersion":   pod.ResourceVersion,
+		"uid":               string(pod.UID),
+	}
+
+	return result, nil
+}
+
+// GetPodLogs retrieves logs from a specific pod
+func (c *Client) GetPodLogs(ctx context.Context, namespace, name, containerName string, tailLines int64, follow, previous bool) (string, error) {
+	logOptions := &corev1.PodLogOptions{
+		Follow:     follow,
+		Previous:   previous,
+		TailLines:  &tailLines,
+		Timestamps: true,
+	}
+
+	if containerName != "" {
+		logOptions.Container = containerName
+	}
+
+	req := c.clientset.CoreV1().Pods(namespace).GetLogs(name, logOptions)
+	logs, err := req.Stream(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get logs for pod '%s' in namespace '%s': %v", name, namespace, err)
+	}
+	defer logs.Close()
+
+	buf := new(bytes.Buffer)
+	if _, err := io.Copy(buf, logs); err != nil {
+		return "", fmt.Errorf("failed to read logs: %v", err)
+	}
+
+	return buf.String(), nil
+}
+
+// DeletePod deletes a specific pod
+func (c *Client) DeletePod(ctx context.Context, namespace, name string, gracePeriodSeconds int64) error {
+	deleteOptions := metav1.DeleteOptions{}
+	if gracePeriodSeconds > 0 {
+		deleteOptions.GracePeriodSeconds = &gracePeriodSeconds
+	}
+
+	err := c.clientset.CoreV1().Pods(namespace).Delete(ctx, name, deleteOptions)
+	if err != nil {
+		return fmt.Errorf("failed to delete pod '%s' in namespace '%s': %v", name, namespace, err)
+	}
+
+	return nil
+}
+
+// GetPodEvents retrieves events related to a specific pod
+func (c *Client) GetPodEvents(ctx context.Context, namespace, podName string) ([]map[string]interface{}, error) {
+	events, err := c.clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.kind=Pod", podName),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get events for pod '%s': %v", podName, err)
+	}
+
+	var result []map[string]interface{}
+	for _, event := range events.Items {
+		eventInfo := map[string]interface{}{
+			"type":      event.Type,
+			"reason":    event.Reason,
+			"message":   event.Message,
+			"timestamp": event.FirstTimestamp.Time,
+			"count":     event.Count,
+			"source":    event.Source.Component,
+		}
+		result = append(result, eventInfo)
+	}
+
+	return result, nil
+}
+
+// Helper functions
+func getPodRestartCount(pod *corev1.Pod) int32 {
+	var totalRestarts int32
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		totalRestarts += containerStatus.RestartCount
+	}
+	return totalRestarts
+}
+
+func isPodReady(pod *corev1.Pod) bool {
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady {
+			return condition.Status == corev1.ConditionTrue
+		}
+	}
+	return false
+}
+
+func getContainerInfo(pod *corev1.Pod) []map[string]interface{} {
+	var containers []map[string]interface{}
+
+	for _, container := range pod.Spec.Containers {
+		containerInfo := map[string]interface{}{
+			"name":  container.Name,
+			"image": container.Image,
+		}
+
+		// Add status information if available
+		for _, status := range pod.Status.ContainerStatuses {
+			if status.Name == container.Name {
+				containerInfo["ready"] = status.Ready
+				containerInfo["restartCount"] = status.RestartCount
+				if status.State.Running != nil {
+					containerInfo["state"] = "running"
+					containerInfo["startedAt"] = status.State.Running.StartedAt.Time
+				} else if status.State.Waiting != nil {
+					containerInfo["state"] = "waiting"
+					containerInfo["reason"] = status.State.Waiting.Reason
+				} else if status.State.Terminated != nil {
+					containerInfo["state"] = "terminated"
+					containerInfo["reason"] = status.State.Terminated.Reason
+				}
+				break
+			}
+		}
+
+		containers = append(containers, containerInfo)
+	}
+
+	return containers
+}
+
+func getPodConditions(pod *corev1.Pod) []map[string]interface{} {
+	var conditions []map[string]interface{}
+	for _, condition := range pod.Status.Conditions {
+		conditionInfo := map[string]interface{}{
+			"type":               string(condition.Type),
+			"status":             string(condition.Status),
+			"reason":             condition.Reason,
+			"message":            condition.Message,
+			"lastTransitionTime": condition.LastTransitionTime.Time,
+		}
+		conditions = append(conditions, conditionInfo)
+	}
+	return conditions
+}
+
+func getVolumeInfo(pod *corev1.Pod) []map[string]interface{} {
+	var volumes []map[string]interface{}
+	for _, volume := range pod.Spec.Volumes {
+		volumeInfo := map[string]interface{}{
+			"name": volume.Name,
+		}
+
+		if volume.ConfigMap != nil {
+			volumeInfo["type"] = "configMap"
+			volumeInfo["configMapName"] = volume.ConfigMap.Name
+		} else if volume.Secret != nil {
+			volumeInfo["type"] = "secret"
+			volumeInfo["secretName"] = volume.Secret.SecretName
+		} else if volume.PersistentVolumeClaim != nil {
+			volumeInfo["type"] = "persistentVolumeClaim"
+			volumeInfo["claimName"] = volume.PersistentVolumeClaim.ClaimName
+		} else if volume.EmptyDir != nil {
+			volumeInfo["type"] = "emptyDir"
+		}
+
+		volumes = append(volumes, volumeInfo)
+	}
+	return volumes
 }

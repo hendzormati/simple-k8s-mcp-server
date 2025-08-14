@@ -4,15 +4,6 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// ListPodsTool creates a tool for listing pods in a namespace
-func ListPodsTool() mcp.Tool {
-	return mcp.NewTool(
-		"listPods",
-		mcp.WithDescription("List all pods in a Kubernetes namespace"),
-		mcp.WithString("namespace", mcp.Description("The namespace to list pods from (default: 'default')")),
-	)
-}
-
 // ========== NAMESPACE TOOLS ==========
 
 // ListNamespacesTool creates a tool for listing all namespaces
@@ -98,5 +89,92 @@ func ForceDeleteNamespaceTool() mcp.Tool {
 		"forceDeleteNamespace",
 		mcp.WithDescription("Force delete a namespace by removing finalizers (use with caution)"),
 		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the namespace to force delete")),
+	)
+}
+
+// ========== POD TOOLS ==========
+
+// ListPodsTool creates a tool for listing pods in a namespace
+func ListPodsTool() mcp.Tool {
+	return mcp.NewTool(
+		"listPods",
+		mcp.WithDescription("List all pods in a Kubernetes namespace with detailed information"),
+		mcp.WithString("namespace", mcp.Description("The namespace to list pods from (default: 'default')")),
+		mcp.WithString("labelSelector", mcp.Description("Optional label selector to filter pods (e.g., 'app=nginx,version=v1')")),
+	)
+}
+
+// GetPodTool creates a tool for getting detailed information about a specific pod
+func GetPodTool() mcp.Tool {
+	return mcp.NewTool(
+		"getPod",
+		mcp.WithDescription("Get detailed information about a specific pod"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the pod")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace of the pod")),
+	)
+}
+
+// GetPodLogsTool creates a tool for getting pod logs
+func GetPodLogsTool() mcp.Tool {
+	return mcp.NewTool(
+		"getPodLogs",
+		mcp.WithDescription("Get logs from a specific pod"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the pod")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace of the pod")),
+		mcp.WithString("containerName", mcp.Description("Optional container name (if pod has multiple containers)")),
+		mcp.WithNumber("tailLines", mcp.Description("Number of lines to tail from the end of logs (default: 100)")),
+		mcp.WithBoolean("follow", mcp.Description("Follow log output (stream logs)")),
+		mcp.WithBoolean("previous", mcp.Description("Get logs from previous container instance")),
+	)
+}
+
+// GetPodMetricsTool creates a tool for getting pod resource metrics
+func GetPodMetricsTool() mcp.Tool {
+	return mcp.NewTool(
+		"getPodMetrics",
+		mcp.WithDescription("Get CPU and memory metrics for a specific pod"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the pod")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace of the pod")),
+	)
+}
+
+// DescribePodTool creates a tool for describing a pod (like kubectl describe)
+func DescribePodTool() mcp.Tool {
+	return mcp.NewTool(
+		"describePod",
+		mcp.WithDescription("Get comprehensive description of a pod including events and status"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the pod")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace of the pod")),
+	)
+}
+
+// DeletePodTool creates a tool for deleting a pod
+func DeletePodTool() mcp.Tool {
+	return mcp.NewTool(
+		"deletePod",
+		mcp.WithDescription("Delete a specific pod"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the pod to delete")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace of the pod")),
+		mcp.WithNumber("gracePeriodSeconds", mcp.Description("Grace period for pod termination (default: 30)")),
+	)
+}
+
+// GetPodEventsTool creates a tool for getting events related to a pod
+func GetPodEventsTool() mcp.Tool {
+	return mcp.NewTool(
+		"getPodEvents",
+		mcp.WithDescription("Get events related to a specific pod"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the pod")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace of the pod")),
+	)
+}
+
+// RestartPodTool creates a tool for restarting a pod (by deleting it)
+func RestartPodTool() mcp.Tool {
+	return mcp.NewTool(
+		"restartPod",
+		mcp.WithDescription("Restart a pod by deleting it (useful for pods managed by deployments)"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the pod to restart")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace of the pod")),
 	)
 }

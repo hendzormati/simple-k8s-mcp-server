@@ -60,6 +60,13 @@ func main() {
 
 	// Register Pod tools
 	mcpServer.AddTool(tools.ListPodsTool(), handlers.ListPods(k8sClient))
+	mcpServer.AddTool(tools.GetPodTool(), handlers.GetPod(k8sClient))
+	mcpServer.AddTool(tools.GetPodLogsTool(), handlers.GetPodLogs(k8sClient))
+	mcpServer.AddTool(tools.GetPodMetricsTool(), handlers.GetPodMetrics(k8sClient))
+	mcpServer.AddTool(tools.DescribePodTool(), handlers.DescribePod(k8sClient))
+	mcpServer.AddTool(tools.DeletePodTool(), handlers.DeletePod(k8sClient))
+	mcpServer.AddTool(tools.GetPodEventsTool(), handlers.GetPodEvents(k8sClient))
+	mcpServer.AddTool(tools.RestartPodTool(), handlers.RestartPod(k8sClient))
 
 	// Register Namespace tools
 	mcpServer.AddTool(tools.ListNamespacesTool(), handlers.ListNamespaces(k8sClient))
@@ -75,7 +82,14 @@ func main() {
 
 	fmt.Println("MCP Server initialized with tools:")
 	fmt.Println("  Pod Tools:")
-	fmt.Println("    - listPods: List pods in a namespace")
+	fmt.Println("    - listPods: List pods in a namespace with filtering")
+	fmt.Println("    - getPod: Get detailed information about a specific pod")
+	fmt.Println("    - getPodLogs: Get logs from a pod")
+	fmt.Println("    - getPodMetrics: Get CPU and memory metrics for a pod")
+	fmt.Println("    - describePod: Get comprehensive pod description")
+	fmt.Println("    - deletePod: Delete a specific pod")
+	fmt.Println("    - getPodEvents: Get events related to a pod")
+	fmt.Println("    - restartPod: Restart a pod by deleting it")
 	fmt.Println("  Namespace Tools:")
 	fmt.Println("    - listNamespaces: List all namespaces")
 	fmt.Println("    - getNamespace: Get detailed namespace information")
