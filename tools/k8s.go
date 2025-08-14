@@ -71,3 +71,32 @@ func GetNamespaceResourceQuotaTool() mcp.Tool {
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace to get resource quotas from")),
 	)
 }
+
+// Add these tools to your k8s.go file in the tools package
+
+// GetNamespaceEventsTool creates a tool for getting events in a namespace
+func GetNamespaceEventsTool() mcp.Tool {
+	return mcp.NewTool(
+		"getNamespaceEvents",
+		mcp.WithDescription("Get all events in a specific namespace to diagnose issues"),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace to get events from")),
+	)
+}
+
+// GetNamespaceAllResourcesTool creates a tool for getting all resources in a namespace
+func GetNamespaceAllResourcesTool() mcp.Tool {
+	return mcp.NewTool(
+		"getNamespaceAllResources",
+		mcp.WithDescription("Get all resources in a namespace to identify what might be blocking deletion"),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace to get all resources from")),
+	)
+}
+
+// ForceDeleteNamespaceTool creates a tool for force deleting a namespace
+func ForceDeleteNamespaceTool() mcp.Tool {
+	return mcp.NewTool(
+		"forceDeleteNamespace",
+		mcp.WithDescription("Force delete a namespace by removing finalizers (use with caution)"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the namespace to force delete")),
+	)
+}
