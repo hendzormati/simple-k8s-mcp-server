@@ -67,8 +67,8 @@ func main() {
 	mcpServer.AddTool(tools.DeletePodTool(), handlers.DeletePod(k8sClient))
 	mcpServer.AddTool(tools.GetPodEventsTool(), handlers.GetPodEvents(k8sClient))
 	mcpServer.AddTool(tools.RestartPodTool(), handlers.RestartPod(k8sClient))
-	mcpServer.AddTool(tools.CreatePodTool(), handlers.CreatePod(k8sClient)) // Add this line
-	mcpServer.AddTool(tools.UpdatePodTool(), handlers.UpdatePod(k8sClient)) // Add this line
+	mcpServer.AddTool(tools.CreatePodTool(), handlers.CreatePod(k8sClient))
+	mcpServer.AddTool(tools.UpdatePodTool(), handlers.UpdatePod(k8sClient))
 
 	// Register Namespace tools
 	mcpServer.AddTool(tools.ListNamespacesTool(), handlers.ListNamespaces(k8sClient))
@@ -77,10 +77,13 @@ func main() {
 	mcpServer.AddTool(tools.UpdateNamespaceTool(), handlers.UpdateNamespace(k8sClient))
 	mcpServer.AddTool(tools.DeleteNamespaceTool(), handlers.DeleteNamespace(k8sClient))
 	mcpServer.AddTool(tools.GetNamespaceResourceQuotaTool(), handlers.GetNamespaceResourceQuota(k8sClient))
-	// Add these lines in your main.go after the existing namespace tools
 	mcpServer.AddTool(tools.GetNamespaceEventsTool(), handlers.GetNamespaceEvents(k8sClient))
 	mcpServer.AddTool(tools.GetNamespaceAllResourcesTool(), handlers.GetNamespaceAllResources(k8sClient))
 	mcpServer.AddTool(tools.ForceDeleteNamespaceTool(), handlers.ForceDeleteNamespace(k8sClient))
+	mcpServer.AddTool(tools.GetNamespaceYAMLTool(), handlers.GetNamespaceYAML(k8sClient))
+	mcpServer.AddTool(tools.SetNamespaceResourceQuotaTool(), handlers.SetNamespaceResourceQuota(k8sClient))
+	mcpServer.AddTool(tools.GetNamespaceLimitRangesTool(), handlers.GetNamespaceLimitRanges(k8sClient))
+	mcpServer.AddTool(tools.SetNamespaceLimitRangeTool(), handlers.SetNamespaceLimitRange(k8sClient))
 
 	fmt.Println("MCP Server initialized with tools:")
 	fmt.Println("  Pod Tools:")
@@ -92,8 +95,8 @@ func main() {
 	fmt.Println("    - deletePod: Delete a specific pod")
 	fmt.Println("    - getPodEvents: Get events related to a pod")
 	fmt.Println("    - restartPod: Restart a pod by deleting it")
-	fmt.Println("    - createPod: Create a new pod from JSON manifest") // Add this line
-	fmt.Println("    - updatePod: Update pod labels and annotations")   // Add this line
+	fmt.Println("    - createPod: Create a new pod from JSON manifest")
+	fmt.Println("    - updatePod: Update pod labels and annotations")
 	fmt.Println("  Namespace Tools:")
 	fmt.Println("    - listNamespaces: List all namespaces")
 	fmt.Println("    - getNamespace: Get detailed namespace information")
@@ -101,6 +104,10 @@ func main() {
 	fmt.Println("    - updateNamespace: Update namespace labels/annotations")
 	fmt.Println("    - deleteNamespace: Delete a namespace")
 	fmt.Println("    - getNamespaceResourceQuota: Get resource quotas for a namespace")
+	fmt.Println("    - getNamespaceYAML: Get namespace YAML definition")
+	fmt.Println("    - setNamespaceResourceQuota: Set resource quota in namespace")
+	fmt.Println("    - getNamespaceLimitRanges: Get limit ranges in namespace")
+	fmt.Println("    - setNamespaceLimitRange: Set limit range in namespace")
 	fmt.Println()
 
 	// Start server based on mode

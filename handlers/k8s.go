@@ -467,6 +467,173 @@ func ForceDeleteNamespace(client *k8s.Client) func(ctx context.Context, request 
 	}
 }
 
+// GetNamespaceYAML returns a handler function for the getNamespaceYAML tool
+func GetNamespaceYAML(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("Kubernetes client not available")
+		}
+
+		args := getArguments(request)
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
+
+		yamlDef, err := client.GetNamespaceYAML(ctx, nameStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get namespace YAML: %v", err)
+		}
+
+		response := map[string]interface{}{
+			"name": nameStr,
+			"yaml": yamlDef,
+		}
+
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// SetNamespaceResourceQuota returns a handler function for the setNamespaceResourceQuota tool
+func SetNamespaceResourceQuota(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("Kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		namespace, exists := args["namespace"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: namespace")
+		}
+		namespaceStr, ok := namespace.(string)
+		if !ok || namespaceStr == "" {
+			return nil, fmt.Errorf("namespace must be a non-empty string")
+		}
+
+		manifest, exists := args["manifest"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: manifest")
+		}
+		manifestStr, ok := manifest.(string)
+		if !ok || manifestStr == "" {
+			return nil, fmt.Errorf("manifest must be a non-empty string")
+		}
+
+		quota, err := client.SetNamespaceResourceQuota(ctx, namespaceStr, manifestStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to set resource quota: %v", err)
+		}
+
+		response := map[string]interface{}{
+			"message":       fmt.Sprintf("Resource quota '%s' %s successfully in namespace '%s'", quota["name"], quota["operation"], namespaceStr),
+			"namespace":     namespaceStr,
+			"resourceQuota": quota,
+		}
+
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// GetNamespaceLimitRanges returns a handler function for the getNamespaceLimitRanges tool
+func GetNamespaceLimitRanges(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("Kubernetes client not available")
+		}
+
+		args := getArguments(request)
+		namespace, exists := args["namespace"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: namespace")
+		}
+		namespaceStr, ok := namespace.(string)
+		if !ok || namespaceStr == "" {
+			return nil, fmt.Errorf("namespace must be a non-empty string")
+		}
+
+		limitRanges, err := client.GetNamespaceLimitRanges(ctx, namespaceStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get limit ranges: %v", err)
+		}
+
+		response := map[string]interface{}{
+			"namespace":   namespaceStr,
+			"limitRanges": limitRanges,
+			"count":       len(limitRanges),
+		}
+
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// SetNamespaceLimitRange returns a handler function for the setNamespaceLimitRange tool
+func SetNamespaceLimitRange(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("Kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		namespace, exists := args["namespace"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: namespace")
+		}
+		namespaceStr, ok := namespace.(string)
+		if !ok || namespaceStr == "" {
+			return nil, fmt.Errorf("namespace must be a non-empty string")
+		}
+
+		manifest, exists := args["manifest"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: manifest")
+		}
+		manifestStr, ok := manifest.(string)
+		if !ok || manifestStr == "" {
+			return nil, fmt.Errorf("manifest must be a non-empty string")
+		}
+
+		limitRange, err := client.SetNamespaceLimitRange(ctx, namespaceStr, manifestStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to set limit range: %v", err)
+		}
+
+		response := map[string]interface{}{
+			"message":    fmt.Sprintf("Limit range '%s' %s successfully in namespace '%s'", limitRange["name"], limitRange["operation"], namespaceStr),
+			"namespace":  namespaceStr,
+			"limitRange": limitRange,
+		}
+
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
 // ========== POD HANDLERS ==========
 
 // ListPods returns a handler function for the listPods tool

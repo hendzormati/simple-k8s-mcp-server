@@ -92,6 +92,44 @@ func ForceDeleteNamespaceTool() mcp.Tool {
 	)
 }
 
+// GetNamespaceYAMLTool creates a tool for getting namespace YAML definition
+func GetNamespaceYAMLTool() mcp.Tool {
+	return mcp.NewTool(
+		"getNamespaceYAML",
+		mcp.WithDescription("Get the YAML definition of a namespace"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the namespace to get YAML for")),
+	)
+}
+
+// SetNamespaceResourceQuotaTool creates a tool for setting resource quota
+func SetNamespaceResourceQuotaTool() mcp.Tool {
+	return mcp.NewTool(
+		"setNamespaceResourceQuota",
+		mcp.WithDescription("Create or update a resource quota in a namespace"),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace to set the resource quota in")),
+		mcp.WithString("manifest", mcp.Required(), mcp.Description("The resource quota manifest in JSON format (e.g., '{\"apiVersion\":\"v1\",\"kind\":\"ResourceQuota\",\"metadata\":{\"name\":\"my-quota\"},\"spec\":{\"hard\":{\"requests.cpu\":\"1\",\"requests.memory\":\"1Gi\"}}}')")),
+	)
+}
+
+// GetNamespaceLimitRangesTool creates a tool for getting limit ranges
+func GetNamespaceLimitRangesTool() mcp.Tool {
+	return mcp.NewTool(
+		"getNamespaceLimitRanges",
+		mcp.WithDescription("Get limit ranges for a specific namespace"),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace to get limit ranges from")),
+	)
+}
+
+// SetNamespaceLimitRangeTool creates a tool for setting limit range
+func SetNamespaceLimitRangeTool() mcp.Tool {
+	return mcp.NewTool(
+		"setNamespaceLimitRange",
+		mcp.WithDescription("Create or update a limit range in a namespace"),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace to set the limit range in")),
+		mcp.WithString("manifest", mcp.Required(), mcp.Description("The limit range manifest in JSON format (e.g., '{\"apiVersion\":\"v1\",\"kind\":\"LimitRange\",\"metadata\":{\"name\":\"my-limit-range\"},\"spec\":{\"limits\":[{\"type\":\"Container\",\"default\":{\"cpu\":\"100m\",\"memory\":\"128Mi\"}}]}}')")),
+	)
+}
+
 // ========== POD TOOLS ==========
 
 // ListPodsTool creates a tool for listing pods in a namespace

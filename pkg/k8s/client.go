@@ -8,6 +8,7 @@ import (
 	"io"
 	"path/filepath"
 
+	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -323,6 +324,151 @@ func (c *Client) ForceDeleteNamespace(ctx context.Context, name string) error {
 
 	// If it's not terminating, try regular delete
 	return c.DeleteNamespace(ctx, name)
+}
+
+// GetNamespaceYAML returns the YAML definition of a namespace
+func (c *Client) GetNamespaceYAML(ctx context.Context, name string) (string, error) {
+	namespace, err := c.clientset.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("failed to get namespace '%s': %v", name, err)
+	}
+
+	// Convert to YAML
+	yamlData, err := yaml.Marshal(namespace)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert namespace to YAML: %v", err)
+	}
+
+	return string(yamlData), nil
+}
+
+// SetNamespaceResourceQuota creates or updates a resource quota in a namespace
+func (c *Client) SetNamespaceResourceQuota(ctx context.Context, namespace, manifest string) (map[string]interface{}, error) {
+	// Parse the JSON manifest
+	var resourceQuota corev1.ResourceQuota
+	err := json.Unmarshal([]byte(manifest), &resourceQuota)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse resource quota manifest: %v", err)
+	}
+
+	// Ensure the namespace is set correctly
+	if resourceQuota.Namespace == "" {
+		resourceQuota.Namespace = namespace
+	}
+	if resourceQuota.Namespace != namespace {
+		return nil, fmt.Errorf("resource quota namespace '%s' does not match target namespace '%s'", resourceQuota.Namespace, namespace)
+	}
+
+	// Try to get existing resource quota first
+	existingQuota, err := c.clientset.CoreV1().ResourceQuotas(namespace).Get(ctx, resourceQuota.Name, metav1.GetOptions{})
+	if err == nil {
+		// Update existing resource quota
+		resourceQuota.ResourceVersion = existingQuota.ResourceVersion
+		updatedQuota, err := c.clientset.CoreV1().ResourceQuotas(namespace).Update(ctx, &resourceQuota, metav1.UpdateOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to update resource quota: %v", err)
+		}
+
+		result := map[string]interface{}{
+			"name":              updatedQuota.Name,
+			"namespace":         updatedQuota.Namespace,
+			"hard":              updatedQuota.Status.Hard,
+			"used":              updatedQuota.Status.Used,
+			"creationTimestamp": updatedQuota.CreationTimestamp.Time,
+			"operation":         "updated",
+		}
+		return result, nil
+	} else {
+		// Create new resource quota
+		createdQuota, err := c.clientset.CoreV1().ResourceQuotas(namespace).Create(ctx, &resourceQuota, metav1.CreateOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create resource quota: %v", err)
+		}
+
+		result := map[string]interface{}{
+			"name":              createdQuota.Name,
+			"namespace":         createdQuota.Namespace,
+			"hard":              createdQuota.Status.Hard,
+			"used":              createdQuota.Status.Used,
+			"creationTimestamp": createdQuota.CreationTimestamp.Time,
+			"operation":         "created",
+		}
+		return result, nil
+	}
+}
+
+// GetNamespaceLimitRanges returns limit ranges for a namespace
+func (c *Client) GetNamespaceLimitRanges(ctx context.Context, namespace string) ([]map[string]interface{}, error) {
+	limitRanges, err := c.clientset.CoreV1().LimitRanges(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get limit ranges for namespace '%s': %v", namespace, err)
+	}
+
+	var result []map[string]interface{}
+	for _, lr := range limitRanges.Items {
+		limitRangeInfo := map[string]interface{}{
+			"name":              lr.Name,
+			"namespace":         lr.Namespace,
+			"limits":            lr.Spec.Limits,
+			"creationTimestamp": lr.CreationTimestamp.Time,
+		}
+		result = append(result, limitRangeInfo)
+	}
+
+	return result, nil
+}
+
+// SetNamespaceLimitRange creates or updates a limit range in a namespace
+func (c *Client) SetNamespaceLimitRange(ctx context.Context, namespace, manifest string) (map[string]interface{}, error) {
+	// Parse the JSON manifest
+	var limitRange corev1.LimitRange
+	err := json.Unmarshal([]byte(manifest), &limitRange)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse limit range manifest: %v", err)
+	}
+
+	// Ensure the namespace is set correctly
+	if limitRange.Namespace == "" {
+		limitRange.Namespace = namespace
+	}
+	if limitRange.Namespace != namespace {
+		return nil, fmt.Errorf("limit range namespace '%s' does not match target namespace '%s'", limitRange.Namespace, namespace)
+	}
+
+	// Try to get existing limit range first
+	existingLimitRange, err := c.clientset.CoreV1().LimitRanges(namespace).Get(ctx, limitRange.Name, metav1.GetOptions{})
+	if err == nil {
+		// Update existing limit range
+		limitRange.ResourceVersion = existingLimitRange.ResourceVersion
+		updatedLimitRange, err := c.clientset.CoreV1().LimitRanges(namespace).Update(ctx, &limitRange, metav1.UpdateOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to update limit range: %v", err)
+		}
+
+		result := map[string]interface{}{
+			"name":              updatedLimitRange.Name,
+			"namespace":         updatedLimitRange.Namespace,
+			"limits":            updatedLimitRange.Spec.Limits,
+			"creationTimestamp": updatedLimitRange.CreationTimestamp.Time,
+			"operation":         "updated",
+		}
+		return result, nil
+	} else {
+		// Create new limit range
+		createdLimitRange, err := c.clientset.CoreV1().LimitRanges(namespace).Create(ctx, &limitRange, metav1.CreateOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create limit range: %v", err)
+		}
+
+		result := map[string]interface{}{
+			"name":              createdLimitRange.Name,
+			"namespace":         createdLimitRange.Namespace,
+			"limits":            createdLimitRange.Spec.Limits,
+			"creationTimestamp": createdLimitRange.CreationTimestamp.Time,
+			"operation":         "created",
+		}
+		return result, nil
+	}
 }
 
 // ========== POD OPERATIONS ==========
