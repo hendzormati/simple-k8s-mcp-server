@@ -76,6 +76,8 @@ func main() {
 	mcpServer.AddTool(tools.CreateNamespaceTool(), handlers.CreateNamespace(k8sClient))
 	mcpServer.AddTool(tools.UpdateNamespaceTool(), handlers.UpdateNamespace(k8sClient))
 	mcpServer.AddTool(tools.DeleteNamespaceTool(), handlers.DeleteNamespace(k8sClient))
+	mcpServer.AddTool(tools.ForceDeleteNamespaceTool(), handlers.ForceDeleteNamespace(k8sClient))
+    mcpServer.AddTool(tools.SmartDeleteNamespaceTool(), handlers.SmartDeleteNamespace(k8sClient))  // Add this line
 	mcpServer.AddTool(tools.GetNamespaceResourceQuotaTool(), handlers.GetNamespaceResourceQuota(k8sClient))
 	mcpServer.AddTool(tools.GetNamespaceEventsTool(), handlers.GetNamespaceEvents(k8sClient))
 	mcpServer.AddTool(tools.GetNamespaceAllResourcesTool(), handlers.GetNamespaceAllResources(k8sClient))
@@ -103,6 +105,8 @@ func main() {
 	fmt.Println("    - createNamespace: Create a new namespace")
 	fmt.Println("    - updateNamespace: Update namespace labels/annotations")
 	fmt.Println("    - deleteNamespace: Delete a namespace")
+	fmt.Println("    - forceDeleteNamespace: Force delete a stuck namespace")
+	fmt.Println("    - smartDeleteNamespace: Intelligently delete using best strategy")
 	fmt.Println("    - getNamespaceResourceQuota: Get resource quotas for a namespace")
 	fmt.Println("    - getNamespaceYAML: Get namespace YAML definition")
 	fmt.Println("    - setNamespaceResourceQuota: Set resource quota in namespace")

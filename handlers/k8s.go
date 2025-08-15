@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/hendzormati/simple-k8s-mcp-server/pkg/k8s"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -240,18 +241,11 @@ func UpdateNamespace(client *k8s.Client) func(ctx context.Context, request mcp.C
 // DeleteNamespace returns a handler function for the deleteNamespace tool
 func DeleteNamespace(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// Check if Kubernetes client is available
 		if client == nil {
-			return nil, fmt.Errorf("kubernetes client not available - please configure a Kubernetes cluster")
+			return nil, fmt.Errorf("Kubernetes client not available")
 		}
 
-		// Extract arguments
 		args := getArguments(request)
-		if len(args) == 0 {
-			return nil, fmt.Errorf("missing arguments")
-		}
-
-		// Get namespace name
 		name, exists := args["name"]
 		if !exists {
 			return nil, fmt.Errorf("missing required argument: name")
@@ -261,20 +255,125 @@ func DeleteNamespace(client *k8s.Client) func(ctx context.Context, request mcp.C
 			return nil, fmt.Errorf("name must be a non-empty string")
 		}
 
-		// Delete namespace
-		err := client.DeleteNamespace(ctx, nameStr)
+		// Check if namespace exists and get its current state
+		namespace, err := client.GetNamespace(ctx, nameStr)
+		if err != nil {
+			return nil, fmt.Errorf("namespace '%s' not found: %v", nameStr, err)
+		}
+
+		// Check for resources in namespace
+		hasResources := false
+		if namespace != nil {
+			// You could add a check here to warn about resources
+			_ = namespace // Placeholder for future resource checking
+		}
+
+		// Attempt deletion
+		err = client.DeleteNamespace(ctx, nameStr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to delete namespace: %v", err)
 		}
 
-		// Prepare response
-		response := map[string]interface{}{
-			"message":   fmt.Sprintf("Namespace '%s' has been deleted successfully", nameStr),
-			"namespace": nameStr,
-			"status":    "deleted",
+		// Wait a moment and check if it's actually deleting
+		time.Sleep(2 * time.Second)
+
+		// Check if namespace is in terminating state
+		updatedNs, err := client.GetNamespace(ctx, nameStr)
+		var status string = "deleted"
+		var message string = fmt.Sprintf("Namespace '%s' deleted successfully", nameStr)
+
+		if err == nil {
+			// Namespace still exists, check its status
+			nsMap := updatedNs
+			if statusVal, exists := nsMap["status"]; exists {
+				if statusStr, ok := statusVal.(string); ok && statusStr == "Terminating" {
+					status = "terminating"
+					message = fmt.Sprintf("Namespace '%s' is terminating. If it gets stuck, use forceDeleteNamespace", nameStr)
+
+					// Add helpful information about what might be blocking
+					if hasResources {
+						message += " (contains resources that may delay deletion)"
+					}
+				}
+			}
 		}
 
-		// Convert to JSON
+		response := map[string]interface{}{
+			"message":   message,
+			"namespace": nameStr,
+			"status":    status,
+		}
+
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// SmartDeleteNamespace returns a handler that automatically chooses the best deletion strategy
+func SmartDeleteNamespace(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("Kubernetes client not available")
+		}
+
+		args := getArguments(request)
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
+
+		// Get force flag (default true)
+		force := true
+		if forceArg, exists := args["force"]; exists {
+			if forceBool, ok := forceArg.(bool); ok {
+				force = forceBool
+			}
+		}
+
+		// Try regular delete first
+		err := client.DeleteNamespace(ctx, nameStr)
+		if err != nil {
+			if force {
+				// If regular delete fails and force is enabled, try force delete
+				err = client.ForceDeleteNamespace(ctx, nameStr)
+				if err != nil {
+					return nil, fmt.Errorf("failed to delete namespace (tried regular and force): %v", err)
+				}
+
+				response := map[string]interface{}{
+					"message":   fmt.Sprintf("Namespace '%s' force deleted successfully", nameStr),
+					"namespace": nameStr,
+					"status":    "force-deleted",
+					"method":    "enhanced-force-delete",
+				}
+
+				jsonResponse, err := json.Marshal(response)
+				if err != nil {
+					return nil, fmt.Errorf("failed to serialize response: %v", err)
+				}
+
+				return mcp.NewToolResultText(string(jsonResponse)), nil
+			} else {
+				return nil, fmt.Errorf("failed to delete namespace: %v", err)
+			}
+		}
+
+		// Regular delete succeeded
+		response := map[string]interface{}{
+			"message":   fmt.Sprintf("Namespace '%s' deleted successfully", nameStr),
+			"namespace": nameStr,
+			"status":    "deleted",
+			"method":    "regular-delete",
+		}
+
 		jsonResponse, err := json.Marshal(response)
 		if err != nil {
 			return nil, fmt.Errorf("failed to serialize response: %v", err)

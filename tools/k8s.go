@@ -130,6 +130,16 @@ func SetNamespaceLimitRangeTool() mcp.Tool {
 	)
 }
 
+// SmartDeleteNamespaceTool creates a tool for intelligent namespace deletion
+func SmartDeleteNamespaceTool() mcp.Tool {
+	return mcp.NewTool(
+		"smartDeleteNamespace",
+		mcp.WithDescription("Intelligently delete a namespace using the best strategy for the cluster type"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the namespace to delete")),
+		mcp.WithBoolean("force", mcp.Description("Force delete if regular deletion fails (default: true)")),
+	)
+}
+
 // ========== POD TOOLS ==========
 
 // ListPodsTool creates a tool for listing pods in a namespace

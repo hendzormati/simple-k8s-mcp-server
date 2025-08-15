@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
@@ -300,30 +302,156 @@ func (c *Client) GetNamespaceAllResources(ctx context.Context, namespace string)
 	return result, nil
 }
 
-// ForceDeleteNamespace attempts to force delete a namespace by removing finalizers
+// ForceDeleteNamespace attempts to force delete a namespace using multiple strategies
 func (c *Client) ForceDeleteNamespace(ctx context.Context, name string) error {
-	// First, try to get the namespace to see its current state
+	// Strategy 1: Try regular delete first
+	fmt.Printf("Attempting regular delete for namespace '%s'...\n", name)
+	err := c.DeleteNamespace(ctx, name)
+	if err == nil {
+		// Wait and check if it's actually deleted
+		if c.waitForNamespaceDeletion(ctx, name, 10*time.Second) {
+			return nil
+		}
+	}
+
+	// Strategy 2: Enhanced force delete with multiple approaches
+	return c.enhancedForceDelete(ctx, name)
+}
+
+// enhancedForceDelete implements multiple strategies for stuck namespaces
+func (c *Client) enhancedForceDelete(ctx context.Context, name string) error {
+	fmt.Printf("Namespace '%s' requires force deletion...\n", name)
+
+	// Get current namespace state
 	namespace, err := c.clientset.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return nil // Already deleted
+		}
 		return fmt.Errorf("failed to get namespace '%s': %v", name, err)
 	}
 
-	// If it's already in Terminating state and has finalizers, remove them
-	if namespace.Status.Phase == corev1.NamespaceTerminating && len(namespace.Spec.Finalizers) > 0 {
-		// Clear the finalizers
-		namespace.Spec.Finalizers = []corev1.FinalizerName{}
-
-		// Update the namespace
-		_, err = c.clientset.CoreV1().Namespaces().Update(ctx, namespace, metav1.UpdateOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to remove finalizers from namespace '%s': %v", name, err)
+	// Check current conditions
+	fmt.Printf("Namespace status: %s\n", namespace.Status.Phase)
+	if len(namespace.Status.Conditions) > 0 {
+		fmt.Println("Namespace conditions:")
+		for _, condition := range namespace.Status.Conditions {
+			fmt.Printf("  - %s: %s (%s)\n", condition.Type, condition.Status, condition.Reason)
 		}
-
-		return nil
 	}
 
-	// If it's not terminating, try regular delete
-	return c.DeleteNamespace(ctx, name)
+	// Strategy 2a: Remove spec finalizers
+	if len(namespace.Spec.Finalizers) > 0 {
+		fmt.Printf("Removing spec finalizers: %v\n", namespace.Spec.Finalizers)
+		namespace.Spec.Finalizers = []corev1.FinalizerName{}
+
+		_, err = c.clientset.CoreV1().Namespaces().Update(ctx, namespace, metav1.UpdateOptions{})
+		if err != nil {
+			fmt.Printf("Warning: Failed to remove spec finalizers: %v\n", err)
+		} else {
+			if c.waitForNamespaceDeletion(ctx, name, 15*time.Second) {
+				return nil
+			}
+		}
+	}
+
+	// Strategy 2b: Remove metadata finalizers
+	if len(namespace.ObjectMeta.Finalizers) > 0 {
+		fmt.Printf("Removing metadata finalizers: %v\n", namespace.ObjectMeta.Finalizers)
+
+		// Get fresh namespace state
+		namespace, err = c.clientset.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				return nil
+			}
+			return fmt.Errorf("failed to get fresh namespace state: %v", err)
+		}
+
+		namespace.ObjectMeta.Finalizers = []string{}
+		_, err = c.clientset.CoreV1().Namespaces().Update(ctx, namespace, metav1.UpdateOptions{})
+		if err != nil {
+			fmt.Printf("Warning: Failed to remove metadata finalizers: %v\n", err)
+		} else {
+			if c.waitForNamespaceDeletion(ctx, name, 15*time.Second) {
+				return nil
+			}
+		}
+	}
+
+	// Strategy 2c: Use finalize subresource (K3s specific)
+	fmt.Printf("Attempting finalize subresource approach...\n")
+	err = c.finalizeNamespace(ctx, name)
+	if err != nil {
+		fmt.Printf("Warning: Finalize subresource failed: %v\n", err)
+	} else {
+		if c.waitForNamespaceDeletion(ctx, name, 10*time.Second) {
+			return nil
+		}
+	}
+
+	// Strategy 2d: Direct JSON patch (last resort)
+	fmt.Printf("Attempting direct JSON patch...\n")
+	err = c.patchNamespaceFinalizers(ctx, name)
+	if err != nil {
+		fmt.Printf("Warning: JSON patch failed: %v\n", err)
+	} else {
+		if c.waitForNamespaceDeletion(ctx, name, 10*time.Second) {
+			return nil
+		}
+	}
+
+	// Final check
+	_, err = c.clientset.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
+	if err != nil && strings.Contains(err.Error(), "not found") {
+		return nil // Successfully deleted
+	}
+
+	return fmt.Errorf("namespace '%s' could not be force deleted after trying all strategies", name)
+}
+
+// waitForNamespaceDeletion waits for a namespace to be deleted
+func (c *Client) waitForNamespaceDeletion(ctx context.Context, name string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		_, err := c.clientset.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
+		if err != nil && strings.Contains(err.Error(), "not found") {
+			fmt.Printf("Namespace '%s' successfully deleted\n", name)
+			return true
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return false
+}
+
+// finalizeNamespace uses the finalize subresource
+func (c *Client) finalizeNamespace(ctx context.Context, name string) error {
+	// Get current namespace
+	namespace, err := c.clientset.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	// Clear finalizers and update status
+	namespace.Spec.Finalizers = []corev1.FinalizerName{}
+	namespace.ObjectMeta.Finalizers = []string{}
+
+	// Update the finalize subresource
+	_, err = c.clientset.CoreV1().Namespaces().UpdateStatus(ctx, namespace, metav1.UpdateOptions{})
+	return err
+}
+
+// patchNamespaceFinalizers uses JSON patch to remove finalizers
+func (c *Client) patchNamespaceFinalizers(ctx context.Context, name string) error {
+	// Create JSON patch to remove finalizers
+	patch := []byte(`[
+        {"op": "replace", "path": "/spec/finalizers", "value": []},
+        {"op": "replace", "path": "/metadata/finalizers", "value": []}
+    ]`)
+
+	_, err := c.clientset.CoreV1().Namespaces().Patch(ctx, name, "application/json-patch+json", patch, metav1.PatchOptions{})
+	return err
 }
 
 // GetNamespaceYAML returns the YAML definition of a namespace
