@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 )
@@ -24,14 +26,56 @@ type Client struct {
 
 // NewClient creates a new Kubernetes client
 func NewClient() (*Client, error) {
-	var kubeconfig string
-	if home := homedir.HomeDir(); home != "" {
-		kubeconfig = filepath.Join(home, ".kube", "config")
+	var config *rest.Config
+	var err error
+
+	// Try multiple configuration methods
+	// Method 1: Try K3s kubeconfig first
+	k3sKubeconfig := "/etc/rancher/k3s/k3s.yaml"
+	if _, err := os.Stat(k3sKubeconfig); err == nil {
+		fmt.Printf("Found K3s kubeconfig at %s\n", k3sKubeconfig)
+		config, err = clientcmd.BuildConfigFromFlags("", k3sKubeconfig)
+		if err == nil {
+			// Configure for K3s with potential certificate issues
+			config.TLSClientConfig.Insecure = false
+			config.TLSClientConfig.CAFile = "" // Let it use embedded CA
+		}
 	}
 
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	// Method 2: Try standard kubeconfig location
+	if config == nil {
+		var kubeconfig string
+		if home := homedir.HomeDir(); home != "" {
+			kubeconfig = filepath.Join(home, ".kube", "config")
+		}
+
+		if _, err := os.Stat(kubeconfig); err == nil {
+			fmt.Printf("Found kubeconfig at %s\n", kubeconfig)
+			config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+		}
+	}
+
+	// Method 3: Try in-cluster config (if running in a pod)
+	if config == nil {
+		fmt.Println("Trying in-cluster config...")
+		config, err = rest.InClusterConfig()
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to create config: %v", err)
+	}
+
+	// Additional K3s-specific configuration
+	if config != nil {
+		// Set reasonable timeouts
+		config.Timeout = 30 * time.Second
+
+		// For development/testing with self-signed certificates
+		// Only use this if you're sure about your environment security
+		if os.Getenv("K3S_INSECURE_SKIP_VERIFY") == "true" {
+			config.TLSClientConfig.Insecure = true
+			fmt.Println("⚠️  WARNING: TLS verification disabled for K3s")
+		}
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
