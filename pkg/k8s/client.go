@@ -158,9 +158,7 @@ Error details: %v`, err)
 	}
 
 	// Enhanced configuration for different cluster types
-	if config != nil {
-		enhanceConfigForClusterType(config, configSource)
-	}
+	enhanceConfigForClusterType(config, configSource)
 
 	// Test the configuration
 	clientset, err := kubernetes.NewForConfig(config)
@@ -222,7 +220,7 @@ func createConfigFromServiceAccount() (*rest.Config, error) {
 	port := os.Getenv("KUBERNETES_SERVICE_PORT")
 
 	if host == "" || port == "" {
-		return nil, fmt.Errorf("Kubernetes service environment variables not found")
+		return nil, fmt.Errorf("kubernetes service environment variables not found")
 	}
 
 	config := &rest.Config{
