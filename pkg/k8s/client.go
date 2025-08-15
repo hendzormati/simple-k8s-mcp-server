@@ -24,74 +24,273 @@ type Client struct {
 	clientset *kubernetes.Clientset
 }
 
-// NewClient creates a new Kubernetes client
+// NewClient creates a new Kubernetes client with auto-detection for various cluster types
 func NewClient() (*Client, error) {
 	var config *rest.Config
 	var err error
+	var configSource string
 
-	// Try multiple configuration methods
-	// Method 1: Try K3s kubeconfig first
-	k3sKubeconfig := "/etc/rancher/k3s/k3s.yaml"
-	if _, err := os.Stat(k3sKubeconfig); err == nil {
-		fmt.Printf("Found K3s kubeconfig at %s\n", k3sKubeconfig)
-		config, err = clientcmd.BuildConfigFromFlags("", k3sKubeconfig)
-		if err == nil {
-			// Configure for K3s with potential certificate issues
-			config.TLSClientConfig.Insecure = false
-			config.TLSClientConfig.CAFile = "" // Let it use embedded CA
-		}
-	}
+	fmt.Println("🔍 Auto-detecting Kubernetes cluster configuration...")
 
-	// Method 2: Try standard kubeconfig location
-	if config == nil {
-		var kubeconfig string
-		if home := homedir.HomeDir(); home != "" {
-			kubeconfig = filepath.Join(home, ".kube", "config")
-		}
+	// Priority order for configuration detection:
+	// 1. In-cluster config (highest priority for pod deployment)
+	// 2. Environment variables
+	// 3. K3s default location
+	// 4. Standard kubeconfig locations
+	// 5. Development fallbacks
 
-		if _, err := os.Stat(kubeconfig); err == nil {
-			fmt.Printf("Found kubeconfig at %s\n", kubeconfig)
-			config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-		}
-	}
-
-	// Method 3: Try in-cluster config (if running in a pod)
-	if config == nil {
-		fmt.Println("Trying in-cluster config...")
+	// Method 1: In-cluster configuration (for pods running in cluster)
+	if isRunningInCluster() {
+		fmt.Println("📦 Detected running inside Kubernetes cluster")
 		config, err = rest.InClusterConfig()
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to create config: %v", err)
-	}
-
-	// Additional K3s-specific configuration
-	if config != nil {
-		// Set reasonable timeouts
-		config.Timeout = 30 * time.Second
-
-		// For development/testing with self-signed certificates
-		// Only use this if you're sure about your environment security
-		if os.Getenv("K3S_INSECURE_SKIP_VERIFY") == "true" {
-			config.TLSClientConfig.Insecure = true
-			fmt.Println("⚠️  WARNING: TLS verification disabled for K3s")
+		if err == nil {
+			configSource = "in-cluster"
+			fmt.Println("✅ Successfully loaded in-cluster configuration")
+		} else {
+			fmt.Printf("⚠️  In-cluster config failed: %v\n", err)
 		}
 	}
 
+	// Method 2: KUBECONFIG environment variable
+	if config == nil {
+		if kubeconfigPath := os.Getenv("KUBECONFIG"); kubeconfigPath != "" {
+			fmt.Printf("🔧 Found KUBECONFIG environment variable: %s\n", kubeconfigPath)
+			if _, err := os.Stat(kubeconfigPath); err == nil {
+				config, err = clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+				if err == nil {
+					configSource = "KUBECONFIG env var"
+					fmt.Printf("✅ Successfully loaded config from KUBECONFIG: %s\n", kubeconfigPath)
+				} else {
+					fmt.Printf("⚠️  Failed to load KUBECONFIG: %v\n", err)
+				}
+			} else {
+				fmt.Printf("⚠️  KUBECONFIG file not found: %s\n", kubeconfigPath)
+			}
+		}
+	}
+
+	// Method 3: K3s default locations (multiple possible paths)
+	if config == nil {
+		k3sPaths := []string{
+			"/etc/rancher/k3s/k3s.yaml",
+			"/var/lib/rancher/k3s/server/cred/admin.kubeconfig",
+			"/etc/kubernetes/admin.conf", // Some K3s installations
+		}
+
+		for _, k3sPath := range k3sPaths {
+			if _, err := os.Stat(k3sPath); err == nil {
+				fmt.Printf("🐄 Found K3s kubeconfig at: %s\n", k3sPath)
+				config, err = clientcmd.BuildConfigFromFlags("", k3sPath)
+				if err == nil {
+					configSource = fmt.Sprintf("K3s config (%s)", k3sPath)
+					fmt.Printf("✅ Successfully loaded K3s configuration\n")
+					break
+				} else {
+					fmt.Printf("⚠️  Failed to load K3s config from %s: %v\n", k3sPath, err)
+				}
+			}
+		}
+	}
+
+	// Method 4: Standard kubeconfig locations
+	if config == nil {
+		standardPaths := []string{}
+
+		if home := homedir.HomeDir(); home != "" {
+			standardPaths = append(standardPaths,
+				filepath.Join(home, ".kube", "config"),
+				filepath.Join(home, ".kube", "config.yaml"),
+			)
+		}
+
+		// Add system-wide locations
+		standardPaths = append(standardPaths,
+			"/root/.kube/config",
+			"/home/kubernetes/.kube/config",
+		)
+
+		for _, stdPath := range standardPaths {
+			if _, err := os.Stat(stdPath); err == nil {
+				fmt.Printf("📁 Found standard kubeconfig at: %s\n", stdPath)
+				config, err = clientcmd.BuildConfigFromFlags("", stdPath)
+				if err == nil {
+					configSource = fmt.Sprintf("Standard config (%s)", stdPath)
+					fmt.Printf("✅ Successfully loaded standard configuration\n")
+					break
+				} else {
+					fmt.Printf("⚠️  Failed to load standard config from %s: %v\n", stdPath, err)
+				}
+			}
+		}
+	}
+
+	// Method 5: Try to auto-create from service account (K8s cluster)
+	if config == nil {
+		fmt.Println("🔄 Attempting to create config from service account...")
+		config, err = createConfigFromServiceAccount()
+		if err == nil {
+			configSource = "service account auto-config"
+			fmt.Println("✅ Successfully created config from service account")
+		} else {
+			fmt.Printf("⚠️  Service account config failed: %v\n", err)
+		}
+	}
+
+	// If all methods failed, return error with helpful information
+	if config == nil {
+		return nil, fmt.Errorf(`
+❌ Failed to find Kubernetes configuration in any location.
+
+Tried the following locations:
+  1. In-cluster config (for pods)
+  2. KUBECONFIG environment variable
+  3. K3s locations: /etc/rancher/k3s/k3s.yaml
+  4. Standard locations: ~/.kube/config
+  5. Service account auto-configuration
+
+To fix this issue:
+  • For K3s: Set KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  • For K8s: Ensure ~/.kube/config exists
+  • For containers: Mount kubeconfig or use service account
+  • Set environment: K8S_AUTO_CONFIG=true for development
+
+Error details: %v`, err)
+	}
+
+	// Enhanced configuration for different cluster types
+	if config != nil {
+		enhanceConfigForClusterType(config, configSource)
+	}
+
+	// Test the configuration
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create clientset: %v", err)
+		return nil, fmt.Errorf("failed to create Kubernetes clientset with %s: %v", configSource, err)
 	}
 
-	return &Client{clientset: clientset}, nil
+	// Final connectivity test
+	client := &Client{clientset: clientset}
+	if err := client.TestConnection(); err != nil {
+		// If connection fails, try with relaxed TLS settings for development
+		if isDevelopmentMode() {
+			fmt.Println("🔧 Connection failed, trying with relaxed TLS settings for development...")
+			config.TLSClientConfig.Insecure = true
+			clientset, err = kubernetes.NewForConfig(config)
+			if err == nil {
+				client = &Client{clientset: clientset}
+				if err := client.TestConnection(); err == nil {
+					fmt.Println("⚠️  Connected with insecure TLS (development mode only)")
+					configSource += " (insecure)"
+				} else {
+					return nil, fmt.Errorf("connection failed even with relaxed TLS settings: %v", err)
+				}
+			}
+		} else {
+			return nil, fmt.Errorf("failed to connect to Kubernetes cluster using %s: %v", configSource, err)
+		}
+	}
+
+	fmt.Printf("🎉 Successfully connected to Kubernetes cluster using: %s\n", configSource)
+	return client, nil
 }
 
-// TestConnection tests if we can connect to the cluster
-func (c *Client) TestConnection() error {
-	_, err := c.clientset.Discovery().ServerVersion()
-	if err != nil {
-		return fmt.Errorf("failed to connect to cluster: %v", err)
+// isRunningInCluster detects if we're running inside a Kubernetes pod
+func isRunningInCluster() bool {
+	// Check for service account token
+	if _, err := os.Stat("/var/run/secrets/kubernetes.io/serviceaccount/token"); err == nil {
+		return true
 	}
+
+	// Check for Kubernetes environment variables
+	if os.Getenv("KUBERNETES_SERVICE_HOST") != "" && os.Getenv("KUBERNETES_SERVICE_PORT") != "" {
+		return true
+	}
+
+	return false
+}
+
+// createConfigFromServiceAccount attempts to create config from mounted service account
+func createConfigFromServiceAccount() (*rest.Config, error) {
+	tokenFile := "/var/run/secrets/kubernetes.io/serviceaccount/token"
+	caFile := "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+
+	if _, err := os.Stat(tokenFile); err != nil {
+		return nil, fmt.Errorf("service account token not found")
+	}
+
+	host := os.Getenv("KUBERNETES_SERVICE_HOST")
+	port := os.Getenv("KUBERNETES_SERVICE_PORT")
+
+	if host == "" || port == "" {
+		return nil, fmt.Errorf("Kubernetes service environment variables not found")
+	}
+
+	config := &rest.Config{
+		Host: fmt.Sprintf("https://%s:%s", host, port),
+		TLSClientConfig: rest.TLSClientConfig{
+			CAFile: caFile,
+		},
+		BearerTokenFile: tokenFile,
+	}
+
+	return config, nil
+}
+
+// enhanceConfigForClusterType applies cluster-specific optimizations
+func enhanceConfigForClusterType(config *rest.Config, configSource string) {
+	// Set reasonable timeouts
+	config.Timeout = 30 * time.Second
+
+	// Apply cluster-specific settings
+	if strings.Contains(strings.ToLower(configSource), "k3s") {
+		fmt.Println("🐄 Applying K3s-specific optimizations...")
+		// K3s often has longer certificate chains
+		config.TLSClientConfig.ServerName = ""
+
+		// For development environments, allow some flexibility
+		if isDevelopmentMode() {
+			fmt.Println("🔧 Development mode: Relaxing TLS settings for K3s")
+			config.TLSClientConfig.Insecure = false // Keep secure but flexible
+		}
+	} else if strings.Contains(strings.ToLower(configSource), "in-cluster") {
+		fmt.Println("📦 Applying in-cluster optimizations...")
+		// In-cluster connections are typically more reliable
+		config.QPS = 100
+		config.Burst = 200
+	} else {
+		fmt.Println("☸️  Applying standard Kubernetes optimizations...")
+		// Standard K8s cluster settings
+		config.QPS = 50
+		config.Burst = 100
+	}
+}
+
+// isDevelopmentMode checks if we're in development mode
+func isDevelopmentMode() bool {
+	return os.Getenv("K8S_AUTO_CONFIG") == "true" ||
+		os.Getenv("DEVELOPMENT_MODE") == "true" ||
+		os.Getenv("K3S_INSECURE_SKIP_VERIFY") == "true"
+}
+
+// Enhanced TestConnection with better error reporting
+func (c *Client) TestConnection() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Test 1: Get server version
+	version, err := c.clientset.Discovery().ServerVersion()
+	if err != nil {
+		return fmt.Errorf("failed to get server version: %v", err)
+	}
+	fmt.Printf("📋 Connected to Kubernetes %s\n", version.String())
+
+	// Test 2: Try to list namespaces (basic permission test)
+	_, err = c.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{Limit: 1})
+	if err != nil {
+		return fmt.Errorf("failed to list namespaces (permission test): %v", err)
+	}
+
+	fmt.Println("✅ Basic connectivity and permissions verified")
 	return nil
 }
 
