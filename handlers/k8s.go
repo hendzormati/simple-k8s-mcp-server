@@ -8,6 +8,8 @@ import (
 
 	"github.com/hendzormati/simple-k8s-mcp-server/pkg/k8s"
 	"github.com/mark3labs/mcp-go/mcp"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // Helper function to safely get arguments as map
@@ -1909,6 +1911,851 @@ func ResumeDeployment(client *k8s.Client) func(ctx context.Context, request mcp.
 		}
 
 		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// ========== EXTENDED DEPLOYMENT HANDLERS ==========
+
+// GetDeploymentEvents returns a handler function for the getDeploymentEvents tool
+func GetDeploymentEvents(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
+
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
+
+		limit := int64(50)
+		if limitArg, exists := args["limit"]; exists {
+			switch v := limitArg.(type) {
+			case float64:
+				limit = int64(v)
+			case int:
+				limit = int64(v)
+			case int64:
+				limit = v
+			}
+		}
+
+		events, err := client.GetDeploymentEvents(ctx, nameStr, namespace, limit)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get deployment events: %v", err)
+		}
+
+		response := map[string]interface{}{
+			"deployment": nameStr,
+			"namespace":  namespace,
+			"events":     events,
+			"count":      len(events),
+		}
+
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// GetDeploymentLogs returns a handler function for the getDeploymentLogs tool
+func GetDeploymentLogs(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
+
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
+
+		container := ""
+		if containerArg, exists := args["container"]; exists {
+			if containerStr, ok := containerArg.(string); ok {
+				container = containerStr
+			}
+		}
+
+		lines := int64(100)
+		if linesArg, exists := args["lines"]; exists {
+			switch v := linesArg.(type) {
+			case float64:
+				lines = int64(v)
+			case int:
+				lines = int64(v)
+			case int64:
+				lines = v
+			}
+		}
+
+		follow := false
+		if followArg, exists := args["follow"]; exists {
+			if followBool, ok := followArg.(bool); ok {
+				follow = followBool
+			}
+		}
+
+		logs, err := client.GetDeploymentLogs(ctx, nameStr, namespace, container, lines, follow)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get deployment logs: %v", err)
+		}
+
+		jsonResponse, err := json.Marshal(logs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// RestartDeployment returns a handler function for the restartDeployment tool
+func RestartDeployment(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
+
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
+
+		deployment, err := client.RestartDeployment(ctx, nameStr, namespace)
+		if err != nil {
+			return nil, fmt.Errorf("failed to restart deployment: %v", err)
+		}
+
+		response := map[string]interface{}{
+			"message":     fmt.Sprintf("Deployment '%s' restarted successfully", nameStr),
+			"deployment":  nameStr,
+			"namespace":   namespace,
+			"restartedAt": deployment.Spec.Template.ObjectMeta.Annotations["kubectl.kubernetes.io/restartedAt"],
+		}
+
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// WaitForDeployment returns a handler function for the waitForDeployment tool
+func WaitForDeployment(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
+
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
+
+		timeout := 300
+		if timeoutArg, exists := args["timeout"]; exists {
+			switch v := timeoutArg.(type) {
+			case float64:
+				timeout = int(v)
+			case int:
+				timeout = v
+			}
+		}
+
+		result, err := client.WaitForDeployment(ctx, nameStr, namespace, timeout)
+		if err != nil {
+			return nil, fmt.Errorf("failed to wait for deployment: %v", err)
+		}
+
+		jsonResponse, err := json.Marshal(result)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// SetDeploymentImage returns a handler function for the setDeploymentImage tool
+func SetDeploymentImage(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
+
+		container, exists := args["container"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: container")
+		}
+		containerStr, ok := container.(string)
+		if !ok || containerStr == "" {
+			return nil, fmt.Errorf("container must be a non-empty string")
+		}
+
+		image, exists := args["image"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: image")
+		}
+		imageStr, ok := image.(string)
+		if !ok || imageStr == "" {
+			return nil, fmt.Errorf("image must be a non-empty string")
+		}
+
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
+
+		deployment, err := client.SetDeploymentImage(ctx, nameStr, namespace, containerStr, imageStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to set deployment image: %v", err)
+		}
+
+		response := map[string]interface{}{
+			"message":    fmt.Sprintf("Image updated to '%s' for container '%s' in deployment '%s'", imageStr, containerStr, nameStr),
+			"deployment": nameStr,
+			"namespace":  namespace,
+			"container":  containerStr,
+			"image":      imageStr,
+			"generation": deployment.Generation,
+		}
+
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// SetDeploymentEnv returns a handler function for the setDeploymentEnv tool
+func SetDeploymentEnv(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
+
+		container, exists := args["container"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: container")
+		}
+		containerStr, ok := container.(string)
+		if !ok || containerStr == "" {
+			return nil, fmt.Errorf("container must be a non-empty string")
+		}
+
+		env, exists := args["env"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: env")
+		}
+		envStr, ok := env.(string)
+		if !ok || envStr == "" {
+			return nil, fmt.Errorf("env must be a non-empty string")
+		}
+
+		// Parse environment variables JSON
+		var envVars map[string]string
+		err := json.Unmarshal([]byte(envStr), &envVars)
+		if err != nil {
+			return nil, fmt.Errorf("invalid env JSON: %v", err)
+		}
+
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
+
+		deployment, err := client.SetDeploymentEnv(ctx, nameStr, namespace, containerStr, envVars)
+		if err != nil {
+			return nil, fmt.Errorf("failed to set deployment environment variables: %v", err)
+		}
+
+		response := map[string]interface{}{
+			"message":    fmt.Sprintf("Environment variables updated for container '%s' in deployment '%s'", containerStr, nameStr),
+			"deployment": nameStr,
+			"namespace":  namespace,
+			"container":  containerStr,
+			"envVars":    envVars,
+			"generation": deployment.Generation,
+		}
+
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// ========== ADDITIONAL POD HANDLERS ==========
+
+// GetPodResourceUsage returns a handler function for the getPodResourceUsage tool
+func GetPodResourceUsage(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
+
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
+
+		usage, err := client.GetPodResourceUsage(ctx, nameStr, namespace)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get pod resource usage: %v", err)
+		}
+
+		jsonResponse, err := json.Marshal(usage)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// GetPodsHealthStatus returns a handler function for the getPodsHealthStatus tool
+func GetPodsHealthStatus(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
+
+		labelSelector := ""
+		if selector, exists := args["labelSelector"]; exists {
+			if selectorStr, ok := selector.(string); ok {
+				labelSelector = selectorStr
+			}
+		}
+
+		healthStatus, err := client.GetPodsHealthStatus(ctx, namespace, labelSelector)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get pods health status: %v", err)
+		}
+
+		jsonResponse, err := json.Marshal(healthStatus)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// PatchDeployment returns a handler function for the patchDeployment tool
+func PatchDeployment(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
+
+		patch, exists := args["patch"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: patch")
+		}
+		patchStr, ok := patch.(string)
+		if !ok || patchStr == "" {
+			return nil, fmt.Errorf("patch must be a non-empty string")
+		}
+
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
+
+		patchType := "strategic"
+		if pt, exists := args["patchType"]; exists {
+			if ptStr, ok := pt.(string); ok && ptStr != "" {
+				patchType = ptStr
+			}
+		}
+
+		// Convert patch type string to k8s patch type
+		var k8sPatchType types.PatchType
+		switch patchType {
+		case "json":
+			k8sPatchType = types.JSONPatchType
+		case "merge":
+			k8sPatchType = types.MergePatchType
+		case "strategic":
+			k8sPatchType = types.StrategicMergePatchType
+		default:
+			k8sPatchType = types.StrategicMergePatchType
+		}
+
+		deployment, err := client.PatchDeployment(ctx, nameStr, namespace, []byte(patchStr), k8sPatchType)
+		if err != nil {
+			return nil, fmt.Errorf("failed to patch deployment: %v", err)
+		}
+
+		response := map[string]interface{}{
+			"message":    fmt.Sprintf("Deployment '%s' patched successfully", nameStr),
+			"deployment": nameStr,
+			"namespace":  namespace,
+			"patchType":  patchType,
+			"generation": deployment.Generation,
+		}
+
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// GetDeploymentYAML returns a handler function for the getDeploymentYAML tool
+func GetDeploymentYAML(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
+
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
+
+		export := false
+		if exp, exists := args["export"]; exists {
+			if expBool, ok := exp.(bool); ok {
+				export = expBool
+			}
+		}
+
+		yamlData, err := client.GetDeploymentYAML(ctx, nameStr, namespace, export)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get deployment YAML: %v", err)
+		}
+
+		response := map[string]interface{}{
+			"deployment": nameStr,
+			"namespace":  namespace,
+			"export":     export,
+			"yaml":       yamlData,
+		}
+
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// SetDeploymentResources returns a handler function for the setDeploymentResources tool
+func SetDeploymentResources(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
+
+		container, exists := args["container"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: container")
+		}
+		containerStr, ok := container.(string)
+		if !ok || containerStr == "" {
+			return nil, fmt.Errorf("container must be a non-empty string")
+		}
+
+		resources, exists := args["resources"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: resources")
+		}
+		resourcesStr, ok := resources.(string)
+		if !ok || resourcesStr == "" {
+			return nil, fmt.Errorf("resources must be a non-empty string")
+		}
+
+		// Parse resources JSON
+		var resourceRequirements corev1.ResourceRequirements
+		err := json.Unmarshal([]byte(resourcesStr), &resourceRequirements)
+		if err != nil {
+			return nil, fmt.Errorf("invalid resources JSON: %v", err)
+		}
+
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
+
+		deployment, err := client.SetDeploymentResources(ctx, nameStr, namespace, containerStr, resourceRequirements)
+		if err != nil {
+			return nil, fmt.Errorf("failed to set deployment resources: %v", err)
+		}
+
+		response := map[string]interface{}{
+			"message":    fmt.Sprintf("Resources updated for container '%s' in deployment '%s'", containerStr, nameStr),
+			"deployment": nameStr,
+			"namespace":  namespace,
+			"container":  containerStr,
+			"generation": deployment.Generation,
+		}
+
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// GetDeploymentMetrics returns a handler function for the getDeploymentMetrics tool
+func GetDeploymentMetrics(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
+
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
+
+		metrics, err := client.GetDeploymentMetrics(ctx, nameStr, namespace)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get deployment metrics: %v", err)
+		}
+
+		jsonResponse, err := json.Marshal(metrics)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// ListAllDeployments returns a handler function for the listAllDeployments tool
+func ListAllDeployments(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		labelSelector := ""
+		if selector, exists := args["labelSelector"]; exists {
+			if selectorStr, ok := selector.(string); ok {
+				labelSelector = selectorStr
+			}
+		}
+
+		includeSystem := false
+		if include, exists := args["includeSystem"]; exists {
+			if includeBool, ok := include.(bool); ok {
+				includeSystem = includeBool
+			}
+		}
+
+		deployments, err := client.ListAllDeployments(ctx, labelSelector, includeSystem)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list all deployments: %v", err)
+		}
+
+		jsonResponse, err := json.Marshal(deployments)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// ScaleAllDeployments returns a handler function for the scaleAllDeployments tool
+func ScaleAllDeployments(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		namespace, exists := args["namespace"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: namespace")
+		}
+		namespaceStr, ok := namespace.(string)
+		if !ok || namespaceStr == "" {
+			return nil, fmt.Errorf("namespace must be a non-empty string")
+		}
+
+		replicas, exists := args["replicas"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: replicas")
+		}
+		var replicasInt32 int32
+		switch v := replicas.(type) {
+		case float64:
+			replicasInt32 = int32(v)
+		case int:
+			replicasInt32 = int32(v)
+		case int32:
+			replicasInt32 = v
+		default:
+			return nil, fmt.Errorf("replicas must be a number")
+		}
+
+		labelSelector := ""
+		if selector, exists := args["labelSelector"]; exists {
+			if selectorStr, ok := selector.(string); ok {
+				labelSelector = selectorStr
+			}
+		}
+
+		dryRun := false
+		if dry, exists := args["dryRun"]; exists {
+			if dryBool, ok := dry.(bool); ok {
+				dryRun = dryBool
+			}
+		}
+
+		result, err := client.ScaleAllDeployments(ctx, namespaceStr, replicasInt32, labelSelector, dryRun)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scale all deployments: %v", err)
+		}
+
+		jsonResponse, err := json.Marshal(result)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// GetNamespaceResourceUsage returns a handler function for the getNamespaceResourceUsage tool
+func GetNamespaceResourceUsage(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		namespace, exists := args["namespace"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: namespace")
+		}
+		namespaceStr, ok := namespace.(string)
+		if !ok || namespaceStr == "" {
+			return nil, fmt.Errorf("namespace must be a non-empty string")
+		}
+
+		includeMetrics := false
+		if metrics, exists := args["includeMetrics"]; exists {
+			if metricsBool, ok := metrics.(bool); ok {
+				includeMetrics = metricsBool
+			}
+		}
+
+		usage, err := client.GetNamespaceResourceUsage(ctx, namespaceStr, includeMetrics)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get namespace resource usage: %v", err)
+		}
+
+		jsonResponse, err := json.Marshal(usage)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
+}
+
+// GetClusterOverview returns a handler function for the getClusterOverview tool
+func GetClusterOverview(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
+
+		args := getArguments(request)
+
+		includeMetrics := false
+		if metrics, exists := args["includeMetrics"]; exists {
+			if metricsBool, ok := metrics.(bool); ok {
+				includeMetrics = metricsBool
+			}
+		}
+
+		overview, err := client.GetClusterOverview(ctx, includeMetrics)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get cluster overview: %v", err)
+		}
+
+		jsonResponse, err := json.Marshal(overview)
 		if err != nil {
 			return nil, fmt.Errorf("failed to serialize response: %v", err)
 		}

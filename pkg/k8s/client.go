@@ -10,11 +10,13 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	sigsyaml "sigs.k8s.io/yaml" 
 
 	"gopkg.in/yaml.v3"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -1677,4 +1679,891 @@ func (c *Client) ResumeDeployment(ctx context.Context, name, namespace string) (
 	}
 
 	return result, nil
+}
+
+// ========== EXTENDED DEPLOYMENT OPERATIONS ==========
+
+// GetDeploymentEvents retrieves events related to a specific deployment
+func (c *Client) GetDeploymentEvents(ctx context.Context, name, namespace string, limit int64) ([]map[string]interface{}, error) {
+	if namespace == "" {
+		namespace = "default"
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+
+	// Verify deployment exists
+	_, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment '%s': %v", name, err)
+	}
+
+	// Get events related to the deployment
+	events, err := c.clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
+		Limit: limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get events: %v", err)
+	}
+
+    var result []map[string]interface{}
+    for _, event := range events.Items {
+        // Filter events related to this deployment or its resources
+        if event.InvolvedObject.Kind == "Deployment" && event.InvolvedObject.Name == name ||
+            event.InvolvedObject.Kind == "ReplicaSet" && 
+            strings.HasPrefix(event.InvolvedObject.Name, name+"-") {
+            
+            eventInfo := map[string]interface{}{
+                "type":           event.Type,
+                "reason":         event.Reason,
+                "message":        event.Message,
+                "firstTimestamp": event.FirstTimestamp.Time.Format(time.RFC3339),
+                "lastTimestamp":  event.LastTimestamp.Time.Format(time.RFC3339),
+                "count":          event.Count,
+                "involvedObject": map[string]interface{}{
+                    "kind": event.InvolvedObject.Kind,
+                    "name": event.InvolvedObject.Name,
+                },
+                "source": event.Source.Component,
+            }
+            result = append(result, eventInfo)
+        }
+    }
+
+    return result, nil
+}
+
+// GetDeploymentLogs retrieves logs from all pods in a deployment
+func (c *Client) GetDeploymentLogs(ctx context.Context, name, namespace, container string, lines int64, follow bool) (map[string]interface{}, error) {
+    if namespace == "" {
+        namespace = "default"
+    }
+    if lines <= 0 {
+        lines = 100
+    }
+
+    // Get deployment
+    deployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to get deployment '%s': %v", name, err)
+    }
+
+    // Get pods for this deployment
+    pods, err := c.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+        LabelSelector: metav1.FormatLabelSelector(deployment.Spec.Selector),
+    })
+    if err != nil {
+        return nil, fmt.Errorf("failed to get pods: %v", err)
+    }
+
+    result := map[string]interface{}{
+        "deployment": name,
+        "namespace":  namespace,
+        "podLogs":    []map[string]interface{}{},
+    }
+
+    var podLogs []map[string]interface{}
+    for _, pod := range pods.Items {
+        podLogInfo := map[string]interface{}{
+            "podName": pod.Name,
+            "containers": map[string]string{},
+        }
+
+        // Get containers to fetch logs from
+        containers := []string{}
+        if container != "" {
+            containers = []string{container}
+        } else {
+            for _, c := range pod.Spec.Containers {
+                containers = append(containers, c.Name)
+            }
+        }
+
+        containerLogs := make(map[string]string)
+        for _, containerName := range containers {
+            req := c.clientset.CoreV1().Pods(namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
+                Container: containerName,
+                TailLines: &lines,
+                Follow:    follow,
+            })
+
+            logs, err := req.Stream(ctx)
+            if err != nil {
+                containerLogs[containerName] = fmt.Sprintf("Error getting logs: %v", err)
+                continue
+            }
+            defer logs.Close()
+
+            buf := new(strings.Builder)
+            _, err = io.Copy(buf, logs)
+            if err != nil {
+                containerLogs[containerName] = fmt.Sprintf("Error reading logs: %v", err)
+            } else {
+                containerLogs[containerName] = buf.String()
+            }
+        }
+
+        podLogInfo["containers"] = containerLogs
+        podLogs = append(podLogs, podLogInfo)
+    }
+
+    result["podLogs"] = podLogs
+    return result, nil
+}
+
+// RestartDeployment restarts a deployment by triggering a rollout
+func (c *Client) RestartDeployment(ctx context.Context, name, namespace string) (*appsv1.Deployment, error) {
+    if namespace == "" {
+        namespace = "default"
+    }
+
+    // Get current deployment
+    deployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to get deployment '%s': %v", name, err)
+    }
+
+    // Add restart annotation to trigger rollout
+    if deployment.Spec.Template.ObjectMeta.Annotations == nil {
+        deployment.Spec.Template.ObjectMeta.Annotations = make(map[string]string)
+    }
+    deployment.Spec.Template.ObjectMeta.Annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
+
+    // Update deployment
+    result, err := c.clientset.AppsV1().Deployments(namespace).Update(ctx, deployment, metav1.UpdateOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to restart deployment '%s': %v", name, err)
+    }
+
+    return result, nil
+}
+
+// WaitForDeployment waits for a deployment to reach its desired state
+func (c *Client) WaitForDeployment(ctx context.Context, name, namespace string, timeoutSeconds int) (map[string]interface{}, error) {
+    if namespace == "" {
+        namespace = "default"
+    }
+    if timeoutSeconds <= 0 {
+        timeoutSeconds = 300
+    }
+
+    timeout := time.Duration(timeoutSeconds) * time.Second
+    ctx, cancel := context.WithTimeout(ctx, timeout)
+    defer cancel()
+
+    // Poll deployment status
+    ticker := time.NewTicker(2 * time.Second)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case <-ctx.Done():
+            return nil, fmt.Errorf("timeout waiting for deployment '%s' to be ready", name)
+        case <-ticker.C:
+            deployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+            if err != nil {
+                return nil, fmt.Errorf("failed to get deployment status: %v", err)
+            }
+
+            // Check if deployment is ready
+            if deployment.Status.ReadyReplicas == *deployment.Spec.Replicas &&
+                deployment.Status.UpdatedReplicas == *deployment.Spec.Replicas &&
+                deployment.Status.ObservedGeneration >= deployment.Generation {
+                
+                return map[string]interface{}{
+                    "status":     "Ready",
+                    "message":    fmt.Sprintf("Deployment '%s' is ready with %d/%d replicas", name, deployment.Status.ReadyReplicas, *deployment.Spec.Replicas),
+                    "replicas":   *deployment.Spec.Replicas,
+                    "readyReplicas": deployment.Status.ReadyReplicas,
+                    "waitTime":   time.Since(time.Now().Add(-timeout)).String(),
+                }, nil
+            }
+        }
+    }
+}
+
+// SetDeploymentImage updates the image of a specific container in a deployment
+func (c *Client) SetDeploymentImage(ctx context.Context, name, namespace, container, image string) (*appsv1.Deployment, error) {
+    if namespace == "" {
+        namespace = "default"
+    }
+
+    // Get current deployment
+    deployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to get deployment '%s': %v", name, err)
+    }
+
+    // Find and update the container image
+    found := false
+    for i, c := range deployment.Spec.Template.Spec.Containers {
+        if c.Name == container {
+            deployment.Spec.Template.Spec.Containers[i].Image = image
+            found = true
+            break
+        }
+    }
+
+    if !found {
+        return nil, fmt.Errorf("container '%s' not found in deployment '%s'", container, name)
+    }
+
+    // Update change cause annotation
+    if deployment.Annotations == nil {
+        deployment.Annotations = make(map[string]string)
+    }
+    deployment.Annotations["deployment.kubernetes.io/change-cause"] = fmt.Sprintf("Updated image for container '%s' to '%s'", container, image)
+
+    // Update deployment
+    result, err := c.clientset.AppsV1().Deployments(namespace).Update(ctx, deployment, metav1.UpdateOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to update deployment image: %v", err)
+    }
+
+    return result, nil
+}
+
+// SetDeploymentEnv updates environment variables in a deployment
+func (c *Client) SetDeploymentEnv(ctx context.Context, name, namespace, container string, envVars map[string]string) (*appsv1.Deployment, error) {
+    if namespace == "" {
+        namespace = "default"
+    }
+
+    // Get current deployment
+    deployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to get deployment '%s': %v", name, err)
+    }
+
+    // Find and update the container environment variables
+    found := false
+    for i, c := range deployment.Spec.Template.Spec.Containers {
+        if c.Name == container {
+            // Create new env vars list
+            envList := []corev1.EnvVar{}
+            
+            // Keep existing env vars that aren't being updated
+            for _, existingEnv := range c.Env {
+                if _, exists := envVars[existingEnv.Name]; !exists {
+                    envList = append(envList, existingEnv)
+                }
+            }
+            
+            // Add new/updated env vars
+            for key, value := range envVars {
+                envList = append(envList, corev1.EnvVar{
+                    Name:  key,
+                    Value: value,
+                })
+            }
+            
+            deployment.Spec.Template.Spec.Containers[i].Env = envList
+            found = true
+            break
+        }
+    }
+
+    if !found {
+        return nil, fmt.Errorf("container '%s' not found in deployment '%s'", container, name)
+    }
+
+    // Update change cause annotation
+    if deployment.Annotations == nil {
+        deployment.Annotations = make(map[string]string)
+    }
+    deployment.Annotations["deployment.kubernetes.io/change-cause"] = fmt.Sprintf("Updated environment variables for container '%s'", container)
+
+    // Update deployment
+    result, err := c.clientset.AppsV1().Deployments(namespace).Update(ctx, deployment, metav1.UpdateOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to update deployment environment: %v", err)
+    }
+
+    return result, nil
+}
+
+// PatchDeployment applies a patch to a deployment
+func (c *Client) PatchDeployment(ctx context.Context, name, namespace string, patchData []byte, patchType types.PatchType) (*appsv1.Deployment, error) {
+    if namespace == "" {
+        namespace = "default"
+    }
+
+    result, err := c.clientset.AppsV1().Deployments(namespace).Patch(ctx, name, patchType, patchData, metav1.PatchOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to patch deployment '%s': %v", name, err)
+    }
+
+    return result, nil
+}
+
+// GetDeploymentYAML exports a deployment as YAML
+func (c *Client) GetDeploymentYAML(ctx context.Context, name, namespace string, export bool) (string, error) {
+    if namespace == "" {
+        namespace = "default"
+    }
+
+    deployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+    if err != nil {
+        return "", fmt.Errorf("failed to get deployment '%s': %v", name, err)
+    }
+
+    if export {
+        // Remove cluster-specific fields for export
+        deployment.TypeMeta = metav1.TypeMeta{
+            APIVersion: "apps/v1",
+            Kind:       "Deployment",
+        }
+        deployment.ObjectMeta.UID = ""
+        deployment.ObjectMeta.ResourceVersion = ""
+        deployment.ObjectMeta.Generation = 0
+        deployment.ObjectMeta.CreationTimestamp = metav1.Time{}
+        deployment.ObjectMeta.SelfLink = ""
+        deployment.ObjectMeta.ManagedFields = nil
+        deployment.Status = appsv1.DeploymentStatus{}
+    }
+
+    yamlData, err := sigsyaml.Marshal(deployment)
+    if err != nil {
+        return "", fmt.Errorf("failed to marshal deployment to YAML: %v", err)
+    }
+
+    return string(yamlData), nil
+}
+
+// SetDeploymentResources updates resource requests and limits
+func (c *Client) SetDeploymentResources(ctx context.Context, name, namespace, container string, resources corev1.ResourceRequirements) (*appsv1.Deployment, error) {
+    if namespace == "" {
+        namespace = "default"
+    }
+
+    // Get current deployment
+    deployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to get deployment '%s': %v", name, err)
+    }
+
+    // Find and update the container resources
+    found := false
+    for i, c := range deployment.Spec.Template.Spec.Containers {
+        if c.Name == container {
+            deployment.Spec.Template.Spec.Containers[i].Resources = resources
+            found = true
+            break
+        }
+    }
+
+    if !found {
+        return nil, fmt.Errorf("container '%s' not found in deployment '%s'", container, name)
+    }
+
+    // Update change cause annotation
+    if deployment.Annotations == nil {
+        deployment.Annotations = make(map[string]string)
+    }
+    deployment.Annotations["deployment.kubernetes.io/change-cause"] = fmt.Sprintf("Updated resources for container '%s'", container)
+
+    // Update deployment
+    result, err := c.clientset.AppsV1().Deployments(namespace).Update(ctx, deployment, metav1.UpdateOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to update deployment resources: %v", err)
+    }
+
+    return result, nil
+}
+
+// GetDeploymentMetrics gets CPU and memory metrics for a deployment
+func (c *Client) GetDeploymentMetrics(ctx context.Context, name, namespace string) (map[string]interface{}, error) {
+    if namespace == "" {
+        namespace = "default"
+    }
+
+    // Note: This requires metrics-server to be installed in the cluster
+    // For a basic implementation, we'll try to get pod metrics
+    
+    // Get deployment
+    deployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to get deployment '%s': %v", name, err)
+    }
+
+    // Get pods for this deployment
+    pods, err := c.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+        LabelSelector: metav1.FormatLabelSelector(deployment.Spec.Selector),
+    })
+    if err != nil {
+        return nil, fmt.Errorf("failed to get pods: %v", err)
+    }
+
+    result := map[string]interface{}{
+        "deployment": name,
+        "namespace":  namespace,
+        "podCount":   len(pods.Items),
+        "metrics":    "Metrics server integration required for detailed metrics",
+        "pods":       []map[string]interface{}{},
+    }
+
+    // Basic pod resource information
+    var podMetrics []map[string]interface{}
+    for _, pod := range pods.Items {
+        podInfo := map[string]interface{}{
+            "name":   pod.Name,
+            "phase":  pod.Status.Phase,
+            "ready":  isPodReady(&pod),
+            "resources": map[string]interface{}{
+                "requests": map[string]interface{}{},
+                "limits":   map[string]interface{}{},
+            },
+        }
+
+        // Get resource requests and limits from containers
+        requests := make(map[string]interface{})
+        limits := make(map[string]interface{})
+        
+        for _, container := range pod.Spec.Containers {
+            if container.Resources.Requests != nil {
+                for resource, quantity := range container.Resources.Requests {
+                    requests[string(resource)] = quantity.String()
+                }
+            }
+            if container.Resources.Limits != nil {
+                for resource, quantity := range container.Resources.Limits {
+                    limits[string(resource)] = quantity.String()
+                }
+            }
+        }
+        
+        podInfo["resources"].(map[string]interface{})["requests"] = requests
+        podInfo["resources"].(map[string]interface{})["limits"] = limits
+        
+        podMetrics = append(podMetrics, podInfo)
+    }
+
+    result["pods"] = podMetrics
+    return result, nil
+}
+
+// ListAllDeployments lists deployments across all namespaces
+func (c *Client) ListAllDeployments(ctx context.Context, labelSelector string, includeSystem bool) (map[string]interface{}, error) {
+    // Get all namespaces first
+    namespaces, err := c.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to list namespaces: %v", err)
+    }
+
+    systemNamespaces := map[string]bool{
+        "kube-system":     true,
+        "kube-public":     true,
+        "kube-node-lease": true,
+        "default":         false, // Include default namespace
+    }
+
+    result := map[string]interface{}{
+        "totalDeployments": 0,
+        "namespaces":       []map[string]interface{}{},
+    }
+
+    var allNamespaces []map[string]interface{}
+    totalDeployments := 0
+
+    for _, ns := range namespaces.Items {
+        // Skip system namespaces if not requested
+        if !includeSystem && systemNamespaces[ns.Name] {
+            continue
+        }
+
+        deployments, err := c.clientset.AppsV1().Deployments(ns.Name).List(ctx, metav1.ListOptions{
+            LabelSelector: labelSelector,
+        })
+        if err != nil {
+            continue // Skip this namespace if we can't list deployments
+        }
+
+        if len(deployments.Items) > 0 {
+            nsInfo := map[string]interface{}{
+                "namespace":        ns.Name,
+                "deploymentCount":  len(deployments.Items),
+                "deployments":      []map[string]interface{}{},
+            }
+
+            var deploymentList []map[string]interface{}
+            for _, deployment := range deployments.Items {
+                deploymentInfo := map[string]interface{}{
+                    "name":              deployment.Name,
+                    "replicas":          *deployment.Spec.Replicas,
+                    "readyReplicas":     deployment.Status.ReadyReplicas,
+                    "availableReplicas": deployment.Status.AvailableReplicas,
+                    "creationTimestamp": deployment.CreationTimestamp.Time.Format(time.RFC3339),
+                    "labels":            deployment.Labels,
+                }
+                deploymentList = append(deploymentList, deploymentInfo)
+            }
+
+            nsInfo["deployments"] = deploymentList
+            allNamespaces = append(allNamespaces, nsInfo)
+            totalDeployments += len(deployments.Items)
+        }
+    }
+
+    result["namespaces"] = allNamespaces
+    result["totalDeployments"] = totalDeployments
+
+    return result, nil
+}
+
+// ScaleAllDeployments scales all deployments in a namespace
+func (c *Client) ScaleAllDeployments(ctx context.Context, namespace string, replicas int32, labelSelector string, dryRun bool) (map[string]interface{}, error) {
+    if namespace == "" {
+        return nil, fmt.Errorf("namespace is required")
+    }
+
+    deployments, err := c.clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
+        LabelSelector: labelSelector,
+    })
+    if err != nil {
+        return nil, fmt.Errorf("failed to list deployments in namespace '%s': %v", namespace, err)
+    }
+
+    result := map[string]interface{}{
+        "namespace":       namespace,
+        "targetReplicas":  replicas,
+        "deployments":     []map[string]interface{}{},
+        "dryRun":          dryRun,
+        "totalProcessed":  len(deployments.Items),
+        "successful":      0,
+        "failed":          0,
+    }
+
+    var deploymentResults []map[string]interface{}
+    successful := 0
+    failed := 0
+
+    for _, deployment := range deployments.Items {
+        deploymentResult := map[string]interface{}{
+            "name":           deployment.Name,
+            "currentReplicas": *deployment.Spec.Replicas,
+            "targetReplicas":  replicas,
+            "status":         "",
+            "error":          "",
+        }
+
+        if !dryRun {
+            // Update the deployment
+            deployment.Spec.Replicas = &replicas
+            _, err := c.clientset.AppsV1().Deployments(namespace).Update(ctx, &deployment, metav1.UpdateOptions{})
+            if err != nil {
+                deploymentResult["status"] = "failed"
+                deploymentResult["error"] = err.Error()
+                failed++
+            } else {
+                deploymentResult["status"] = "scaled"
+                successful++
+            }
+        } else {
+            deploymentResult["status"] = "dry-run"
+            successful++
+        }
+
+        deploymentResults = append(deploymentResults, deploymentResult)
+    }
+
+    result["deployments"] = deploymentResults
+    result["successful"] = successful
+    result["failed"] = failed
+
+    return result, nil
+}
+
+// ========== ADDITIONAL CLUSTER OVERVIEW OPERATIONS ==========
+
+// GetNamespaceResourceUsage gets resource usage summary for a namespace
+func (c *Client) GetNamespaceResourceUsage(ctx context.Context, namespace string, includeMetrics bool) (map[string]interface{}, error) {
+    if namespace == "" {
+        return nil, fmt.Errorf("namespace is required")
+    }
+
+    // Get namespace info
+    ns, err := c.clientset.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to get namespace '%s': %v", namespace, err)
+    }
+
+    result := map[string]interface{}{
+        "namespace":        namespace,
+        "creationTimestamp": ns.CreationTimestamp.Time.Format(time.RFC3339),
+        "status":           ns.Status.Phase,
+        "labels":           ns.Labels,
+        "annotations":      ns.Annotations,
+        "resourceCounts":   map[string]int{},
+    }
+
+	resourceCounts := make(map[string]interface{})
+
+	// Count pods
+	pods, err := c.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+	if err == nil {
+		resourceCounts["pods"] = len(pods.Items)
+		
+		// Count pod phases
+		podPhases := make(map[string]int)
+		for _, pod := range pods.Items {
+			podPhases[string(pod.Status.Phase)]++
+		}
+		resourceCounts["podPhases"] = podPhases
+	}
+
+    // Count deployments
+    deployments, err := c.clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
+    if err == nil {
+        resourceCounts["deployments"] = len(deployments.Items)
+    }
+
+    // Count services
+    services, err := c.clientset.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{})
+    if err == nil {
+        resourceCounts["services"] = len(services.Items)
+    }
+
+    // Count configmaps
+    configMaps, err := c.clientset.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{})
+    if err == nil {
+        resourceCounts["configMaps"] = len(configMaps.Items)
+    }
+
+    // Count secrets
+    secrets, err := c.clientset.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{})
+    if err == nil {
+        resourceCounts["secrets"] = len(secrets.Items)
+    }
+
+    result["resourceCounts"] = resourceCounts
+    return result, nil
+}
+
+// GetClusterOverview gets cluster-wide overview
+func (c *Client) GetClusterOverview(ctx context.Context, includeMetrics bool) (map[string]interface{}, error) {
+    result := map[string]interface{}{
+        "cluster": map[string]interface{}{
+            "nodes":      map[string]interface{}{},
+            "namespaces": map[string]interface{}{},
+            "resources":  map[string]interface{}{},
+        },
+        "timestamp": time.Now().Format(time.RFC3339),
+    }
+
+    // Get nodes
+    nodes, err := c.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+    if err == nil {
+        nodeInfo := map[string]interface{}{
+            "total": len(nodes.Items),
+            "ready": 0,
+            "nodes": []map[string]interface{}{},
+        }
+
+        var nodeList []map[string]interface{}
+        readyNodes := 0
+        for _, node := range nodes.Items {
+            isReady := false
+            for _, condition := range node.Status.Conditions {
+                if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionTrue {
+                    isReady = true
+                    readyNodes++
+                    break
+                }
+            }
+
+            nodeDetails := map[string]interface{}{
+                "name":              node.Name,
+                "ready":             isReady,
+                "creationTimestamp": node.CreationTimestamp.Time.Format(time.RFC3339),
+                "labels":            node.Labels,
+                "nodeInfo":          node.Status.NodeInfo,
+            }
+            nodeList = append(nodeList, nodeDetails)
+        }
+
+        nodeInfo["ready"] = readyNodes
+        nodeInfo["nodes"] = nodeList
+        result["cluster"].(map[string]interface{})["nodes"] = nodeInfo
+    }
+
+    // Get namespaces summary
+    namespaces, err := c.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+    if err == nil {
+        nsInfo := map[string]interface{}{
+            "total":      len(namespaces.Items),
+            "active":     0,
+            "namespaces": []map[string]interface{}{},
+        }
+
+        var nsList []map[string]interface{}
+        activeNs := 0
+        for _, ns := range namespaces.Items {
+            if ns.Status.Phase == corev1.NamespaceActive {
+                activeNs++
+            }
+
+            nsDetails := map[string]interface{}{
+                "name":              ns.Name,
+                "status":            ns.Status.Phase,
+                "creationTimestamp": ns.CreationTimestamp.Time.Format(time.RFC3339),
+                "labels":            ns.Labels,
+            }
+            nsList = append(nsList, nsDetails)
+        }
+
+        nsInfo["active"] = activeNs
+        nsInfo["namespaces"] = nsList
+        result["cluster"].(map[string]interface{})["namespaces"] = nsInfo
+    }
+
+    // Get cluster-wide resource counts
+    resourceCounts := make(map[string]int)
+    
+    // Count all pods
+    allPods, err := c.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+    if err == nil {
+        resourceCounts["totalPods"] = len(allPods.Items)
+    }
+
+    // Count all deployments
+    allDeployments, err := c.clientset.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
+    if err == nil {
+        resourceCounts["totalDeployments"] = len(allDeployments.Items)
+    }
+
+    // Count all services
+    allServices, err := c.clientset.CoreV1().Services("").List(ctx, metav1.ListOptions{})
+    if err == nil {
+        resourceCounts["totalServices"] = len(allServices.Items)
+    }
+
+    result["cluster"].(map[string]interface{})["resources"] = resourceCounts
+    return result, nil
+}
+
+// ========== ADDITIONAL POD OPERATIONS ==========
+
+// GetPodResourceUsage gets resource usage for a specific pod
+func (c *Client) GetPodResourceUsage(ctx context.Context, name, namespace string) (map[string]interface{}, error) {
+    if namespace == "" {
+        namespace = "default"
+    }
+
+    pod, err := c.clientset.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to get pod '%s': %v", name, err)
+    }
+
+    result := map[string]interface{}{
+        "pod":       name,
+        "namespace": namespace,
+        "phase":     pod.Status.Phase,
+        "containers": []map[string]interface{}{},
+    }
+
+    var containers []map[string]interface{}
+    for _, container := range pod.Spec.Containers {
+        containerInfo := map[string]interface{}{
+            "name":  container.Name,
+            "image": container.Image,
+            "resources": map[string]interface{}{
+                "requests": map[string]interface{}{},
+                "limits":   map[string]interface{}{},
+            },
+        }
+
+        requests := make(map[string]interface{})
+        limits := make(map[string]interface{})
+
+        if container.Resources.Requests != nil {
+            for resource, quantity := range container.Resources.Requests {
+                requests[string(resource)] = quantity.String()
+            }
+        }
+
+        if container.Resources.Limits != nil {
+            for resource, quantity := range container.Resources.Limits {
+                limits[string(resource)] = quantity.String()
+            }
+        }
+
+        containerInfo["resources"].(map[string]interface{})["requests"] = requests
+        containerInfo["resources"].(map[string]interface{})["limits"] = limits
+
+        containers = append(containers, containerInfo)
+    }
+
+    result["containers"] = containers
+    return result, nil
+}
+
+// GetPodsHealthStatus gets health status overview of pods in a namespace
+func (c *Client) GetPodsHealthStatus(ctx context.Context, namespace, labelSelector string) (map[string]interface{}, error) {
+    if namespace == "" {
+        namespace = "default"
+    }
+
+    pods, err := c.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+        LabelSelector: labelSelector,
+    })
+    if err != nil {
+        return nil, fmt.Errorf("failed to list pods: %v", err)
+    }
+
+    result := map[string]interface{}{
+        "namespace":  namespace,
+        "totalPods":  len(pods.Items),
+        "summary":    map[string]int{},
+        "pods":       []map[string]interface{}{},
+    }
+
+    summary := map[string]int{
+        "Running":    0,
+        "Pending":    0,
+        "Succeeded":  0,
+        "Failed":     0,
+        "Unknown":    0,
+        "Ready":      0,
+        "NotReady":   0,
+    }
+
+    var podList []map[string]interface{}
+    for _, pod := range pods.Items {
+        phase := string(pod.Status.Phase)
+        summary[phase]++
+
+        isReady := isPodReady(&pod)
+        if isReady {
+            summary["Ready"]++
+        } else {
+            summary["NotReady"]++
+        }
+
+        podInfo := map[string]interface{}{
+            "name":              pod.Name,
+            "phase":             phase,
+            "ready":             isReady,
+            "restarts":          getPodRestartCount(&pod),
+            "creationTimestamp": pod.CreationTimestamp.Time.Format(time.RFC3339),
+            "labels":            pod.Labels,
+        }
+
+        // Add container statuses
+        var containerStatuses []map[string]interface{}
+        for _, status := range pod.Status.ContainerStatuses {
+            containerStatuses = append(containerStatuses, map[string]interface{}{
+                "name":         status.Name,
+                "ready":        status.Ready,
+                "restartCount": status.RestartCount,
+                "image":        status.Image,
+            })
+        }
+        podInfo["containerStatuses"] = containerStatuses
+
+        podList = append(podList, podInfo)
+    }
+
+    result["summary"] = summary
+    result["pods"] = podList
+    return result, nil
 }

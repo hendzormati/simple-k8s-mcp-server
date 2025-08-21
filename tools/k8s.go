@@ -366,3 +366,184 @@ func ResumeDeploymentTool() mcp.Tool {
 		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
 	)
 }
+
+// ========== EXTENDED DEPLOYMENT TOOLS ==========
+
+// GetDeploymentEventsTool creates a tool for getting deployment-related events
+func GetDeploymentEventsTool() mcp.Tool {
+	return mcp.NewTool(
+		"getDeploymentEvents",
+		mcp.WithDescription("Get events related to a specific deployment for debugging and monitoring"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+		mcp.WithNumber("limit", mcp.Description("Maximum number of events to return (default: 50)")),
+	)
+}
+
+// GetDeploymentLogsTool creates a tool for getting logs from all pods in a deployment
+func GetDeploymentLogsTool() mcp.Tool {
+	return mcp.NewTool(
+		"getDeploymentLogs",
+		mcp.WithDescription("Get logs from all pods in a deployment"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+		mcp.WithString("container", mcp.Description("Specific container name (optional)")),
+		mcp.WithNumber("lines", mcp.Description("Number of lines to retrieve (default: 100)")),
+		mcp.WithBoolean("follow", mcp.Description("Follow log output (default: false)")),
+	)
+}
+
+// RestartDeploymentTool creates a tool for restarting a deployment
+func RestartDeploymentTool() mcp.Tool {
+	return mcp.NewTool(
+		"restartDeployment",
+		mcp.WithDescription("Restart a deployment by triggering a rollout (useful for config reloads)"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment to restart")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+	)
+}
+
+// WaitForDeploymentTool creates a tool for waiting for deployment to reach desired state
+func WaitForDeploymentTool() mcp.Tool {
+	return mcp.NewTool(
+		"waitForDeployment",
+		mcp.WithDescription("Wait for a deployment to reach its desired state (ready)"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+		mcp.WithNumber("timeout", mcp.Description("Timeout in seconds (default: 300)")),
+	)
+}
+
+// SetDeploymentImageTool creates a tool for updating container images
+func SetDeploymentImageTool() mcp.Tool {
+	return mcp.NewTool(
+		"setDeploymentImage",
+		mcp.WithDescription("Update container image in a deployment"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment")),
+		mcp.WithString("container", mcp.Required(), mcp.Description("The name of the container to update")),
+		mcp.WithString("image", mcp.Required(), mcp.Description("The new container image")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+	)
+}
+
+// SetDeploymentEnvTool creates a tool for updating environment variables
+func SetDeploymentEnvTool() mcp.Tool {
+	return mcp.NewTool(
+		"setDeploymentEnv",
+		mcp.WithDescription("Update environment variables in a deployment"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment")),
+		mcp.WithString("container", mcp.Required(), mcp.Description("The name of the container to update")),
+		mcp.WithString("env", mcp.Required(), mcp.Description("Environment variables as JSON object (e.g., '{\"KEY1\":\"value1\",\"KEY2\":\"value2\"}')")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+	)
+}
+
+// PatchDeploymentTool creates a tool for applying JSON patches
+func PatchDeploymentTool() mcp.Tool {
+	return mcp.NewTool(
+		"patchDeployment",
+		mcp.WithDescription("Apply a JSON patch to a deployment"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment")),
+		mcp.WithString("patch", mcp.Required(), mcp.Description("JSON patch to apply")),
+		mcp.WithString("patchType", mcp.Description("Type of patch: 'json', 'merge', or 'strategic' (default: 'strategic')")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+	)
+}
+
+// GetDeploymentYAMLTool creates a tool for exporting deployment as YAML
+func GetDeploymentYAMLTool() mcp.Tool {
+	return mcp.NewTool(
+		"getDeploymentYAML",
+		mcp.WithDescription("Export deployment configuration as YAML"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+		mcp.WithBoolean("export", mcp.Description("Export for backup (removes cluster-specific fields) (default: false)")),
+	)
+}
+
+// SetDeploymentResourcesTool creates a tool for updating resource requests/limits
+func SetDeploymentResourcesTool() mcp.Tool {
+	return mcp.NewTool(
+		"setDeploymentResources",
+		mcp.WithDescription("Update resource requests and limits for a deployment"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment")),
+		mcp.WithString("container", mcp.Required(), mcp.Description("The name of the container to update")),
+		mcp.WithString("resources", mcp.Required(), mcp.Description("Resources as JSON object (e.g., '{\"requests\":{\"cpu\":\"100m\",\"memory\":\"128Mi\"},\"limits\":{\"cpu\":\"500m\",\"memory\":\"256Mi\"}}')")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+	)
+}
+
+// GetDeploymentMetricsTool creates a tool for getting deployment metrics
+func GetDeploymentMetricsTool() mcp.Tool {
+	return mcp.NewTool(
+		"getDeploymentMetrics",
+		mcp.WithDescription("Get CPU and memory metrics for a deployment"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+	)
+}
+
+// ListAllDeploymentsTool creates a tool for listing deployments across all namespaces
+func ListAllDeploymentsTool() mcp.Tool {
+	return mcp.NewTool(
+		"listAllDeployments",
+		mcp.WithDescription("List deployments across all namespaces with summary information"),
+		mcp.WithString("labelSelector", mcp.Description("Optional label selector to filter deployments")),
+		mcp.WithBoolean("includeSystem", mcp.Description("Include system namespaces (default: false)")),
+	)
+}
+
+// ScaleAllDeploymentsTool creates a tool for scaling all deployments in a namespace
+func ScaleAllDeploymentsTool() mcp.Tool {
+	return mcp.NewTool(
+		"scaleAllDeployments",
+		mcp.WithDescription("Scale all deployments in a namespace to specified replicas"),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace to scale deployments in")),
+		mcp.WithNumber("replicas", mcp.Required(), mcp.Description("The desired number of replicas for all deployments")),
+		mcp.WithString("labelSelector", mcp.Description("Optional label selector to filter which deployments to scale")),
+		mcp.WithBoolean("dryRun", mcp.Description("Perform a dry run without making changes (default: false)")),
+	)
+}
+
+// ========== ADDITIONAL NAMESPACE TOOLS FOR KUBESPHERE-LIKE INTERFACE ==========
+
+// GetNamespaceResourceUsageTool creates a tool for getting resource usage across a namespace
+func GetNamespaceResourceUsageTool() mcp.Tool {
+	return mcp.NewTool(
+		"getNamespaceResourceUsage",
+		mcp.WithDescription("Get resource usage summary for a namespace (pods, deployments, services, etc.)"),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("The namespace to analyze")),
+		mcp.WithBoolean("includeMetrics", mcp.Description("Include CPU/Memory metrics if available (default: false)")),
+	)
+}
+
+// GetClusterOverviewTool creates a tool for getting cluster-wide overview
+func GetClusterOverviewTool() mcp.Tool {
+	return mcp.NewTool(
+		"getClusterOverview",
+		mcp.WithDescription("Get cluster-wide overview including nodes, namespaces, and resource counts"),
+		mcp.WithBoolean("includeMetrics", mcp.Description("Include resource metrics if available (default: false)")),
+	)
+}
+
+// ========== ADDITIONAL POD TOOLS FOR KUBESPHERE-LIKE INTERFACE ==========
+
+// GetPodResourceUsageTool creates a tool for getting pod resource usage
+func GetPodResourceUsageTool() mcp.Tool {
+	return mcp.NewTool(
+		"getPodResourceUsage",
+		mcp.WithDescription("Get resource usage (CPU/Memory) for a specific pod"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the pod")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the pod (default: 'default')")),
+	)
+}
+
+// GetPodsHealthStatusTool creates a tool for getting health status of pods
+func GetPodsHealthStatusTool() mcp.Tool {
+	return mcp.NewTool(
+		"getPodsHealthStatus",
+		mcp.WithDescription("Get health status overview of all pods in a namespace"),
+		mcp.WithString("namespace", mcp.Description("The namespace to check (default: 'default')")),
+		mcp.WithString("labelSelector", mcp.Description("Optional label selector to filter pods")),
+	)
+}
