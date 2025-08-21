@@ -248,3 +248,121 @@ func UpdatePodTool() mcp.Tool {
 		mcp.WithString("annotations", mcp.Description("Optional annotations to add/update in JSON format (e.g., '{\"description\":\"Updated pod\",\"owner\":\"team-a\"}')")),
 	)
 }
+
+// ========== DEPLOYMENT TOOLS ==========
+
+// ListDeploymentsTool creates a tool for listing deployments in a namespace
+func ListDeploymentsTool() mcp.Tool {
+	return mcp.NewTool(
+		"listDeployments",
+		mcp.WithDescription("List all deployments in a Kubernetes namespace with detailed information"),
+		mcp.WithString("namespace", mcp.Description("The namespace to list deployments from (default: 'default')")),
+		mcp.WithString("labelSelector", mcp.Description("Optional label selector to filter deployments (e.g., 'app=nginx,version=v1')")),
+	)
+}
+
+// GetDeploymentTool creates a tool for getting detailed information about a specific deployment
+func GetDeploymentTool() mcp.Tool {
+	return mcp.NewTool(
+		"getDeployment",
+		mcp.WithDescription("Get detailed information about a specific deployment"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+	)
+}
+
+// CreateDeploymentTool creates a tool for creating a new deployment
+func CreateDeploymentTool() mcp.Tool {
+	return mcp.NewTool(
+		"createDeployment",
+		mcp.WithDescription("Create a new deployment from a JSON manifest"),
+		mcp.WithString("manifest", mcp.Required(), mcp.Description("The deployment manifest in JSON format")),
+		mcp.WithString("namespace", mcp.Description("The namespace to create the deployment in (default: 'default')")),
+	)
+}
+
+// UpdateDeploymentTool creates a tool for updating deployment specifications
+func UpdateDeploymentTool() mcp.Tool {
+	return mcp.NewTool(
+		"updateDeployment",
+		mcp.WithDescription("Update an existing deployment with new specifications"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment to update")),
+		mcp.WithString("manifest", mcp.Required(), mcp.Description("The updated deployment manifest in JSON format")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+	)
+}
+
+// DeleteDeploymentTool creates a tool for deleting a deployment
+func DeleteDeploymentTool() mcp.Tool {
+	return mcp.NewTool(
+		"deleteDeployment",
+		mcp.WithDescription("Delete a deployment and optionally its replica sets and pods"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment to delete")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+		mcp.WithBoolean("cascade", mcp.Description("Whether to delete associated replica sets and pods (default: true)")),
+	)
+}
+
+// ScaleDeploymentTool creates a tool for scaling deployment replicas
+func ScaleDeploymentTool() mcp.Tool {
+	return mcp.NewTool(
+		"scaleDeployment",
+		mcp.WithDescription("Scale a deployment to the specified number of replicas"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment to scale")),
+		mcp.WithNumber("replicas", mcp.Required(), mcp.Description("The desired number of replicas")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+	)
+}
+
+// RolloutStatusTool creates a tool for checking rollout status
+func RolloutStatusTool() mcp.Tool {
+	return mcp.NewTool(
+		"rolloutStatus",
+		mcp.WithDescription("Check the rollout status of a deployment"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+		mcp.WithBoolean("watch", mcp.Description("Whether to watch for status changes (default: false)")),
+	)
+}
+
+// RolloutHistoryTool creates a tool for getting rollout history
+func RolloutHistoryTool() mcp.Tool {
+	return mcp.NewTool(
+		"rolloutHistory",
+		mcp.WithDescription("Get the rollout history of a deployment"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+		mcp.WithNumber("revision", mcp.Description("Optional specific revision to get details for")),
+	)
+}
+
+// RolloutUndoTool creates a tool for rolling back deployments
+func RolloutUndoTool() mcp.Tool {
+	return mcp.NewTool(
+		"rolloutUndo",
+		mcp.WithDescription("Rollback a deployment to a previous revision"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment to rollback")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+		mcp.WithNumber("toRevision", mcp.Description("Specific revision to rollback to (default: previous revision)")),
+	)
+}
+
+// PauseDeploymentTool creates a tool for pausing deployments
+func PauseDeploymentTool() mcp.Tool {
+	return mcp.NewTool(
+		"pauseDeployment",
+		mcp.WithDescription("Pause a deployment to prevent further rollouts"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment to pause")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+	)
+}
+
+// ResumeDeploymentTool creates a tool for resuming deployments
+func ResumeDeploymentTool() mcp.Tool {
+	return mcp.NewTool(
+		"resumeDeployment",
+		mcp.WithDescription("Resume a paused deployment"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the deployment to resume")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the deployment (default: 'default')")),
+	)
+}

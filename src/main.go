@@ -58,7 +58,7 @@ func main() {
 		server.WithResourceCapabilities(true, true), // Enable resource listing and subscription capabilities
 	)
 
-	// Register Pod tools
+	// Pod tools
 	mcpServer.AddTool(tools.ListPodsTool(), handlers.ListPods(k8sClient))
 	mcpServer.AddTool(tools.GetPodTool(), handlers.GetPod(k8sClient))
 	mcpServer.AddTool(tools.GetPodLogsTool(), handlers.GetPodLogs(k8sClient))
@@ -70,14 +70,14 @@ func main() {
 	mcpServer.AddTool(tools.CreatePodTool(), handlers.CreatePod(k8sClient))
 	mcpServer.AddTool(tools.UpdatePodTool(), handlers.UpdatePod(k8sClient))
 
-	// Register Namespace tools
+	// Namespace tools
 	mcpServer.AddTool(tools.ListNamespacesTool(), handlers.ListNamespaces(k8sClient))
 	mcpServer.AddTool(tools.GetNamespaceTool(), handlers.GetNamespace(k8sClient))
 	mcpServer.AddTool(tools.CreateNamespaceTool(), handlers.CreateNamespace(k8sClient))
 	mcpServer.AddTool(tools.UpdateNamespaceTool(), handlers.UpdateNamespace(k8sClient))
 	mcpServer.AddTool(tools.DeleteNamespaceTool(), handlers.DeleteNamespace(k8sClient))
 	mcpServer.AddTool(tools.ForceDeleteNamespaceTool(), handlers.ForceDeleteNamespace(k8sClient))
-    mcpServer.AddTool(tools.SmartDeleteNamespaceTool(), handlers.SmartDeleteNamespace(k8sClient))  // Add this line
+	mcpServer.AddTool(tools.SmartDeleteNamespaceTool(), handlers.SmartDeleteNamespace(k8sClient)) // Add this line
 	mcpServer.AddTool(tools.GetNamespaceResourceQuotaTool(), handlers.GetNamespaceResourceQuota(k8sClient))
 	mcpServer.AddTool(tools.GetNamespaceEventsTool(), handlers.GetNamespaceEvents(k8sClient))
 	mcpServer.AddTool(tools.GetNamespaceAllResourcesTool(), handlers.GetNamespaceAllResources(k8sClient))
@@ -86,6 +86,19 @@ func main() {
 	mcpServer.AddTool(tools.SetNamespaceResourceQuotaTool(), handlers.SetNamespaceResourceQuota(k8sClient))
 	mcpServer.AddTool(tools.GetNamespaceLimitRangesTool(), handlers.GetNamespaceLimitRanges(k8sClient))
 	mcpServer.AddTool(tools.SetNamespaceLimitRangeTool(), handlers.SetNamespaceLimitRange(k8sClient))
+
+	// Deployment tools
+	mcpServer.AddTool(tools.ListDeploymentsTool(), handlers.ListDeployments(k8sClient))
+	mcpServer.AddTool(tools.GetDeploymentTool(), handlers.GetDeployment(k8sClient))
+	mcpServer.AddTool(tools.CreateDeploymentTool(), handlers.CreateDeployment(k8sClient))
+	mcpServer.AddTool(tools.UpdateDeploymentTool(), handlers.UpdateDeployment(k8sClient))
+	mcpServer.AddTool(tools.DeleteDeploymentTool(), handlers.DeleteDeployment(k8sClient))
+	mcpServer.AddTool(tools.ScaleDeploymentTool(), handlers.ScaleDeployment(k8sClient))
+	mcpServer.AddTool(tools.RolloutStatusTool(), handlers.RolloutStatus(k8sClient))
+	mcpServer.AddTool(tools.RolloutHistoryTool(), handlers.RolloutHistory(k8sClient))
+	mcpServer.AddTool(tools.RolloutUndoTool(), handlers.RolloutUndo(k8sClient))
+	mcpServer.AddTool(tools.PauseDeploymentTool(), handlers.PauseDeployment(k8sClient))
+	mcpServer.AddTool(tools.ResumeDeploymentTool(), handlers.ResumeDeployment(k8sClient))
 
 	fmt.Println("MCP Server initialized with tools:")
 	fmt.Println("  Pod Tools:")
@@ -112,6 +125,18 @@ func main() {
 	fmt.Println("    - setNamespaceResourceQuota: Set resource quota in namespace")
 	fmt.Println("    - getNamespaceLimitRanges: Get limit ranges in namespace")
 	fmt.Println("    - setNamespaceLimitRange: Set limit range in namespace")
+	fmt.Println("  📦 Deployment Tools:")
+	fmt.Println("    - listDeployments: List deployments in namespace")
+	fmt.Println("    - getDeployment: Get deployment details")
+	fmt.Println("    - createDeployment: Create new deployments")
+	fmt.Println("    - updateDeployment: Update deployment specs")
+	fmt.Println("    - deleteDeployment: Delete deployments")
+	fmt.Println("    - scaleDeployment: Scale replicas up/down")
+	fmt.Println("    - rolloutStatus: Check rollout status")
+	fmt.Println("    - rolloutHistory: Get rollout history")
+	fmt.Println("    - rolloutUndo: Rollback to previous version")
+	fmt.Println("    - pauseDeployment: Pause deployments")
+	fmt.Println("    - resumeDeployment: Resume deployments")
 	fmt.Println()
 
 	// Start server based on mode

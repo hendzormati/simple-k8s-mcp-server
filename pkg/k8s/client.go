@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -1176,6 +1177,503 @@ func (c *Client) UpdatePod(ctx context.Context, namespace, name string, labels, 
 		"containers":        getContainerInfo(updatedPod),
 		"resourceVersion":   updatedPod.ResourceVersion,
 		"uid":               string(updatedPod.UID),
+	}
+
+	return result, nil
+}
+
+// ========== DEPLOYMENT OPERATIONS ==========
+
+// ListDeployments returns a list of deployments in the specified namespace
+func (c *Client) ListDeployments(ctx context.Context, namespace string) ([]map[string]interface{}, error) {
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	deployments, err := c.clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list deployments in namespace '%s': %v", namespace, err)
+	}
+
+	var result []map[string]interface{}
+	for _, deployment := range deployments.Items {
+		deploymentInfo := map[string]interface{}{
+			"name":              deployment.Name,
+			"namespace":         deployment.Namespace,
+			"replicas":          *deployment.Spec.Replicas,
+			"readyReplicas":     deployment.Status.ReadyReplicas,
+			"availableReplicas": deployment.Status.AvailableReplicas,
+			"updatedReplicas":   deployment.Status.UpdatedReplicas,
+			"creationTimestamp": deployment.CreationTimestamp.Time.Format(time.RFC3339),
+			"labels":            deployment.Labels,
+			"annotations":       deployment.Annotations,
+			"selector":          deployment.Spec.Selector.MatchLabels,
+			"strategy":          deployment.Spec.Strategy.Type,
+			"conditions":        deployment.Status.Conditions,
+		}
+
+		// Add container information
+		if len(deployment.Spec.Template.Spec.Containers) > 0 {
+			var containers []map[string]interface{}
+			for _, container := range deployment.Spec.Template.Spec.Containers {
+				containerInfo := map[string]interface{}{
+					"name":  container.Name,
+					"image": container.Image,
+				}
+				if len(container.Ports) > 0 {
+					containerInfo["ports"] = container.Ports
+				}
+				containers = append(containers, containerInfo)
+			}
+			deploymentInfo["containers"] = containers
+		}
+
+		result = append(result, deploymentInfo)
+	}
+
+	return result, nil
+}
+
+// ListDeploymentsWithSelector returns deployments filtered by label selector
+func (c *Client) ListDeploymentsWithSelector(ctx context.Context, namespace, labelSelector string) ([]map[string]interface{}, error) {
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	deployments, err := c.clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labelSelector,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list deployments with selector '%s' in namespace '%s': %v", labelSelector, namespace, err)
+	}
+
+	var result []map[string]interface{}
+	for _, deployment := range deployments.Items {
+		deploymentInfo := map[string]interface{}{
+			"name":              deployment.Name,
+			"namespace":         deployment.Namespace,
+			"replicas":          *deployment.Spec.Replicas,
+			"readyReplicas":     deployment.Status.ReadyReplicas,
+			"availableReplicas": deployment.Status.AvailableReplicas,
+			"updatedReplicas":   deployment.Status.UpdatedReplicas,
+			"creationTimestamp": deployment.CreationTimestamp.Time.Format(time.RFC3339),
+			"labels":            deployment.Labels,
+			"selector":          deployment.Spec.Selector.MatchLabels,
+			"strategy":          deployment.Spec.Strategy.Type,
+		}
+		result = append(result, deploymentInfo)
+	}
+
+	return result, nil
+}
+
+// GetDeployment returns detailed information about a specific deployment
+func (c *Client) GetDeployment(ctx context.Context, name, namespace string) (map[string]interface{}, error) {
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	deployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment '%s' in namespace '%s': %v", name, namespace, err)
+	}
+
+	// Get replica sets
+	replicaSets, err := c.clientset.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: metav1.FormatLabelSelector(deployment.Spec.Selector),
+	})
+	if err != nil {
+		fmt.Printf("Warning: failed to get replica sets: %v\n", err)
+	}
+
+	// Get pods
+	pods, err := c.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: metav1.FormatLabelSelector(deployment.Spec.Selector),
+	})
+	if err != nil {
+		fmt.Printf("Warning: failed to get pods: %v\n", err)
+	}
+
+	result := map[string]interface{}{
+		"name":                    deployment.Name,
+		"namespace":               deployment.Namespace,
+		"uid":                     deployment.UID,
+		"resourceVersion":         deployment.ResourceVersion,
+		"generation":              deployment.Generation,
+		"creationTimestamp":       deployment.CreationTimestamp.Time.Format(time.RFC3339),
+		"labels":                  deployment.Labels,
+		"annotations":             deployment.Annotations,
+		"replicas":                *deployment.Spec.Replicas,
+		"selector":                deployment.Spec.Selector.MatchLabels,
+		"strategy":                deployment.Spec.Strategy,
+		"minReadySeconds":         deployment.Spec.MinReadySeconds,
+		"progressDeadlineSeconds": deployment.Spec.ProgressDeadlineSeconds,
+		"paused":                  deployment.Spec.Paused,
+		"status": map[string]interface{}{
+			"observedGeneration":  deployment.Status.ObservedGeneration,
+			"replicas":            deployment.Status.Replicas,
+			"updatedReplicas":     deployment.Status.UpdatedReplicas,
+			"readyReplicas":       deployment.Status.ReadyReplicas,
+			"availableReplicas":   deployment.Status.AvailableReplicas,
+			"unavailableReplicas": deployment.Status.UnavailableReplicas,
+			"conditions":          deployment.Status.Conditions,
+		},
+		"spec": map[string]interface{}{
+			"template": deployment.Spec.Template,
+		},
+	}
+
+	// Add replica set information
+	if replicaSets != nil {
+		var rsInfo []map[string]interface{}
+		for _, rs := range replicaSets.Items {
+			rsInfo = append(rsInfo, map[string]interface{}{
+				"name":              rs.Name,
+				"replicas":          *rs.Spec.Replicas,
+				"readyReplicas":     rs.Status.ReadyReplicas,
+				"availableReplicas": rs.Status.AvailableReplicas,
+				"creationTimestamp": rs.CreationTimestamp.Time.Format(time.RFC3339),
+			})
+		}
+		result["replicaSets"] = rsInfo
+	}
+
+	// Add pod information
+	if pods != nil {
+		var podInfo []map[string]interface{}
+		for _, pod := range pods.Items {
+			podInfo = append(podInfo, map[string]interface{}{
+				"name":              pod.Name,
+				"phase":             pod.Status.Phase,
+				"ready":             isPodReady(&pod),
+				"restarts":          getPodRestartCount(&pod),
+				"creationTimestamp": pod.CreationTimestamp.Time.Format(time.RFC3339),
+			})
+		}
+		result["pods"] = podInfo
+	}
+
+	return result, nil
+}
+
+// CreateDeployment creates a new deployment from a JSON manifest
+func (c *Client) CreateDeployment(ctx context.Context, manifest string, namespace string) (*appsv1.Deployment, error) {
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	var deployment appsv1.Deployment
+	err := json.Unmarshal([]byte(manifest), &deployment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse deployment manifest: %v", err)
+	}
+
+	// Ensure namespace is set
+	deployment.Namespace = namespace
+
+	// Set default values if not specified
+	if deployment.Spec.Replicas == nil {
+		replicas := int32(1)
+		deployment.Spec.Replicas = &replicas
+	}
+
+	createdDeployment, err := c.clientset.AppsV1().Deployments(namespace).Create(ctx, &deployment, metav1.CreateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create deployment '%s' in namespace '%s': %v", deployment.Name, namespace, err)
+	}
+
+	return createdDeployment, nil
+}
+
+// UpdateDeployment updates an existing deployment
+func (c *Client) UpdateDeployment(ctx context.Context, name, manifest, namespace string) (*appsv1.Deployment, error) {
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	// Get existing deployment
+	existingDeployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get existing deployment '%s': %v", name, err)
+	}
+
+	// Parse the updated manifest
+	var updatedDeployment appsv1.Deployment
+	err = json.Unmarshal([]byte(manifest), &updatedDeployment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse updated deployment manifest: %v", err)
+	}
+
+	// Preserve important metadata
+	updatedDeployment.Name = existingDeployment.Name
+	updatedDeployment.Namespace = existingDeployment.Namespace
+	updatedDeployment.ResourceVersion = existingDeployment.ResourceVersion
+	updatedDeployment.UID = existingDeployment.UID
+
+	result, err := c.clientset.AppsV1().Deployments(namespace).Update(ctx, &updatedDeployment, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update deployment '%s' in namespace '%s': %v", name, namespace, err)
+	}
+
+	return result, nil
+}
+
+// DeleteDeployment deletes a deployment
+func (c *Client) DeleteDeployment(ctx context.Context, name, namespace string, cascade bool) error {
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	var propagationPolicy metav1.DeletionPropagation
+	if cascade {
+		propagationPolicy = metav1.DeletePropagationForeground
+	} else {
+		propagationPolicy = metav1.DeletePropagationOrphan
+	}
+
+	err := c.clientset.AppsV1().Deployments(namespace).Delete(ctx, name, metav1.DeleteOptions{
+		PropagationPolicy: &propagationPolicy,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete deployment '%s' in namespace '%s': %v", name, namespace, err)
+	}
+
+	return nil
+}
+
+// ScaleDeployment scales a deployment to the specified number of replicas
+func (c *Client) ScaleDeployment(ctx context.Context, name, namespace string, replicas int32) (*appsv1.Deployment, error) {
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	// Get the current deployment
+	deployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment '%s': %v", name, err)
+	}
+
+	// Update the replica count
+	deployment.Spec.Replicas = &replicas
+
+	// Update the deployment
+	result, err := c.clientset.AppsV1().Deployments(namespace).Update(ctx, deployment, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to scale deployment '%s' to %d replicas: %v", name, replicas, err)
+	}
+
+	return result, nil
+}
+
+// GetRolloutStatus returns the rollout status of a deployment
+func (c *Client) GetRolloutStatus(ctx context.Context, name, namespace string) (map[string]interface{}, error) {
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	deployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment '%s': %v", name, err)
+	}
+
+	status := map[string]interface{}{
+		"name":                deployment.Name,
+		"namespace":           deployment.Namespace,
+		"generation":          deployment.Generation,
+		"observedGeneration":  deployment.Status.ObservedGeneration,
+		"replicas":            deployment.Status.Replicas,
+		"updatedReplicas":     deployment.Status.UpdatedReplicas,
+		"readyReplicas":       deployment.Status.ReadyReplicas,
+		"availableReplicas":   deployment.Status.AvailableReplicas,
+		"unavailableReplicas": deployment.Status.UnavailableReplicas,
+		"conditions":          deployment.Status.Conditions,
+		"paused":              deployment.Spec.Paused,
+	}
+
+	// Determine rollout status
+	if deployment.Generation > deployment.Status.ObservedGeneration {
+		status["rolloutStatus"] = "Waiting for rollout to finish"
+	} else if deployment.Status.UpdatedReplicas < *deployment.Spec.Replicas {
+		status["rolloutStatus"] = "Waiting for deployment to update"
+	} else if deployment.Status.Replicas > deployment.Status.UpdatedReplicas {
+		status["rolloutStatus"] = "Waiting for old replica sets to terminate"
+	} else if deployment.Status.AvailableReplicas < deployment.Status.UpdatedReplicas {
+		status["rolloutStatus"] = "Waiting for deployment to become available"
+	} else {
+		status["rolloutStatus"] = "Successfully rolled out"
+	}
+
+	return status, nil
+}
+
+// GetRolloutHistory returns the rollout history of a deployment
+func (c *Client) GetRolloutHistory(ctx context.Context, name, namespace string, revision *int64) (map[string]interface{}, error) {
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	deployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment '%s': %v", name, err)
+	}
+
+	// Get replica sets associated with this deployment
+	replicaSets, err := c.clientset.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: metav1.FormatLabelSelector(deployment.Spec.Selector),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get replica sets: %v", err)
+	}
+
+	var history []map[string]interface{}
+	for _, rs := range replicaSets.Items {
+		// Get revision from annotation
+		revisionStr, exists := rs.Annotations["deployment.kubernetes.io/revision"]
+		if !exists {
+			continue
+		}
+
+		// Parse revision number
+		revisionNum, err := fmt.Sscanf(revisionStr, "%d")
+		if err != nil {
+			continue
+		}
+
+		// If specific revision requested, filter
+		if revision != nil && int64(revisionNum) != *revision {
+			continue
+		}
+
+		changeCase := rs.Annotations["deployment.kubernetes.io/revision-history-limit"]
+		if changeCase == "" {
+			changeCase = "No change cause specified"
+		}
+
+		historyEntry := map[string]interface{}{
+			"revision":          revisionStr,
+			"changeCause":       changeCase,
+			"creationTimestamp": rs.CreationTimestamp.Time.Format(time.RFC3339),
+			"replicaSetName":    rs.Name,
+			"replicas":          *rs.Spec.Replicas,
+			"template":          rs.Spec.Template,
+		}
+
+		history = append(history, historyEntry)
+	}
+
+	result := map[string]interface{}{
+		"deployment": name,
+		"namespace":  namespace,
+		"history":    history,
+	}
+
+	return result, nil
+}
+
+// RollbackDeployment rolls back a deployment to a previous revision
+func (c *Client) RollbackDeployment(ctx context.Context, name, namespace string, toRevision *int64) (*appsv1.Deployment, error) {
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	deployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment '%s': %v", name, err)
+	}
+
+	// Get replica sets to find the target revision
+	replicaSets, err := c.clientset.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: metav1.FormatLabelSelector(deployment.Spec.Selector),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get replica sets: %v", err)
+	}
+
+	var targetRS *appsv1.ReplicaSet
+	if toRevision != nil {
+		// Find specific revision
+		for _, rs := range replicaSets.Items {
+			if revisionStr, exists := rs.Annotations["deployment.kubernetes.io/revision"]; exists {
+				if revisionStr == fmt.Sprintf("%d", *toRevision) {
+					targetRS = &rs
+					break
+				}
+			}
+		}
+		if targetRS == nil {
+			return nil, fmt.Errorf("revision %d not found", *toRevision)
+		}
+	} else {
+		// Find previous revision (latest that's not current)
+		currentRevision := deployment.Annotations["deployment.kubernetes.io/revision"]
+		var latestRevision int64 = 0
+		for _, rs := range replicaSets.Items {
+			if revisionStr, exists := rs.Annotations["deployment.kubernetes.io/revision"]; exists && revisionStr != currentRevision {
+				if rev, err := fmt.Sscanf(revisionStr, "%d"); err == nil && int64(rev) > latestRevision {
+					latestRevision = int64(rev)
+					targetRS = &rs
+				}
+			}
+		}
+		if targetRS == nil {
+			return nil, fmt.Errorf("no previous revision found")
+		}
+	}
+
+	// Update deployment template with target replica set template
+	deployment.Spec.Template = targetRS.Spec.Template
+
+	// Add rollback annotation
+	if deployment.Annotations == nil {
+		deployment.Annotations = make(map[string]string)
+	}
+	deployment.Annotations["deployment.kubernetes.io/rollback-to"] = targetRS.Annotations["deployment.kubernetes.io/revision"]
+
+	result, err := c.clientset.AppsV1().Deployments(namespace).Update(ctx, deployment, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to rollback deployment '%s': %v", name, err)
+	}
+
+	return result, nil
+}
+
+// PauseDeployment pauses a deployment
+func (c *Client) PauseDeployment(ctx context.Context, name, namespace string) (*appsv1.Deployment, error) {
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	deployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment '%s': %v", name, err)
+	}
+
+	deployment.Spec.Paused = true
+
+	result, err := c.clientset.AppsV1().Deployments(namespace).Update(ctx, deployment, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to pause deployment '%s': %v", name, err)
+	}
+
+	return result, nil
+}
+
+// ResumeDeployment resumes a paused deployment
+func (c *Client) ResumeDeployment(ctx context.Context, name, namespace string) (*appsv1.Deployment, error) {
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	deployment, err := c.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment '%s': %v", name, err)
+	}
+
+	deployment.Spec.Paused = false
+
+	result, err := c.clientset.AppsV1().Deployments(namespace).Update(ctx, deployment, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to resume deployment '%s': %v", name, err)
 	}
 
 	return result, nil
