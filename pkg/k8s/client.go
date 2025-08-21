@@ -80,14 +80,14 @@ func NewClient() (*Client, error) {
 
 		for _, k3sPath := range k3sPaths {
 			if _, err := os.Stat(k3sPath); err == nil {
-				fmt.Printf("🐄 Found K3s kubeconfig at: %s\n", k3sPath)
+				fmt.Printf("🐄 Found Kubernetes kubeconfig at: %s\n", k3sPath)
 				config, err = clientcmd.BuildConfigFromFlags("", k3sPath)
 				if err == nil {
-					configSource = fmt.Sprintf("K3s config (%s)", k3sPath)
-					fmt.Printf("✅ Successfully loaded K3s configuration\n")
+					configSource = fmt.Sprintf("Kubernetes config (%s)", k3sPath)
+					fmt.Printf("✅ Successfully loaded Kubernetes configuration\n")
 					break
 				} else {
-					fmt.Printf("⚠️  Failed to load K3s config from %s: %v\n", k3sPath, err)
+					fmt.Printf("⚠️  Failed to load Kubernetes config from %s: %v\n", k3sPath, err)
 				}
 			}
 		}
