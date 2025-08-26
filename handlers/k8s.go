@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hendzormati/simple-k8s-mcp-server/pkg/k8s"
@@ -2763,842 +2764,855 @@ func GetClusterOverview(client *k8s.Client) func(ctx context.Context, request mc
 		return mcp.NewToolResultText(string(jsonResponse)), nil
 	}
 }
+
 // ========== SERVICE HANDLERS ==========
 
 // ListServices returns a handler function for the listServices tool
 func ListServices(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        if client == nil {
-            return nil, fmt.Errorf("kubernetes client not available")
-        }
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
 
-        args := getArguments(request)
-        namespace := "default"
-        if ns, exists := args["namespace"]; exists {
-            if nsStr, ok := ns.(string); ok && nsStr != "" {
-                namespace = nsStr
-            }
-        }
+		args := getArguments(request)
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
 
-        var services []map[string]interface{}
-        var err error
+		var services []map[string]interface{}
+		var err error
 
-        if labelSelector, exists := args["labelSelector"]; exists {
-            if selectorStr, ok := labelSelector.(string); ok && selectorStr != "" {
-                services, err = client.ListServicesWithSelector(ctx, namespace, selectorStr)
-            } else {
-                services, err = client.ListServices(ctx, namespace)
-            }
-        } else {
-            services, err = client.ListServices(ctx, namespace)
-        }
+		if labelSelector, exists := args["labelSelector"]; exists {
+			if selectorStr, ok := labelSelector.(string); ok && selectorStr != "" {
+				services, err = client.ListServicesWithSelector(ctx, namespace, selectorStr)
+			} else {
+				services, err = client.ListServices(ctx, namespace)
+			}
+		} else {
+			services, err = client.ListServices(ctx, namespace)
+		}
 
-        if err != nil {
-            return nil, fmt.Errorf("failed to list services: %v", err)
-        }
+		if err != nil {
+			return nil, fmt.Errorf("failed to list services: %v", err)
+		}
 
-        response := map[string]interface{}{
-            "namespace": namespace,
-            "services":  services,
-            "count":     len(services),
-        }
+		response := map[string]interface{}{
+			"namespace": namespace,
+			"services":  services,
+			"count":     len(services),
+		}
 
-        jsonResponse, err := json.Marshal(response)
-        if err != nil {
-            return nil, fmt.Errorf("failed to serialize response: %v", err)
-        }
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
 
-        return mcp.NewToolResultText(string(jsonResponse)), nil
-    }
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
 }
 
 // GetService returns a handler function for the getService tool
 func GetService(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        if client == nil {
-            return nil, fmt.Errorf("kubernetes client not available")
-        }
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
 
-        args := getArguments(request)
-        name, exists := args["name"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: name")
-        }
-        nameStr, ok := name.(string)
-        if !ok || nameStr == "" {
-            return nil, fmt.Errorf("name must be a non-empty string")
-        }
+		args := getArguments(request)
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
 
-        namespace := "default"
-        if ns, exists := args["namespace"]; exists {
-            if nsStr, ok := ns.(string); ok && nsStr != "" {
-                namespace = nsStr
-            }
-        }
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
 
-        service, err := client.GetService(ctx, nameStr, namespace)
-        if err != nil {
-            return nil, fmt.Errorf("failed to get service: %v", err)
-        }
+		service, err := client.GetService(ctx, nameStr, namespace)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get service: %v", err)
+		}
 
-        jsonResponse, err := json.Marshal(service)
-        if err != nil {
-            return nil, fmt.Errorf("failed to serialize response: %v", err)
-        }
+		jsonResponse, err := json.Marshal(service)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
 
-        return mcp.NewToolResultText(string(jsonResponse)), nil
-    }
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
 }
 
 // CreateService returns a handler function for the createService tool
 func CreateService(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        if client == nil {
-            return nil, fmt.Errorf("kubernetes client not available")
-        }
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
 
-        args := getArguments(request)
+		args := getArguments(request)
 
-        manifest, exists := args["manifest"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: manifest")
-        }
-        manifestStr, ok := manifest.(string)
-        if !ok || manifestStr == "" {
-            return nil, fmt.Errorf("manifest must be a non-empty string")
-        }
+		manifest, exists := args["manifest"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: manifest")
+		}
+		manifestStr, ok := manifest.(string)
+		if !ok || manifestStr == "" {
+			return nil, fmt.Errorf("manifest must be a non-empty string")
+		}
 
-        namespace := "default"
-        if ns, exists := args["namespace"]; exists {
-            if nsStr, ok := ns.(string); ok && nsStr != "" {
-                namespace = nsStr
-            }
-        }
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
 
-        service, err := client.CreateService(ctx, manifestStr, namespace)
-        if err != nil {
-            return nil, fmt.Errorf("failed to create service: %v", err)
-        }
+		service, err := client.CreateService(ctx, manifestStr, namespace)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create service: %v", err)
+		}
 
-        response := map[string]interface{}{
-            "message": fmt.Sprintf("Service '%s' created successfully in namespace '%s'", service.Name, service.Namespace),
-            "service": map[string]interface{}{
-                "name":              service.Name,
-                "namespace":         service.Namespace,
-                "uid":               service.UID,
-                "type":              string(service.Spec.Type),
-                "clusterIP":         service.Spec.ClusterIP,
-                "ports":             service.Spec.Ports,
-                "selector":          service.Spec.Selector,
-                "creationTimestamp": service.CreationTimestamp.Time.Format(time.RFC3339),
-            },
-        }
+		response := map[string]interface{}{
+			"message": fmt.Sprintf("Service '%s' created successfully in namespace '%s'", service.Name, service.Namespace),
+			"service": map[string]interface{}{
+				"name":              service.Name,
+				"namespace":         service.Namespace,
+				"uid":               service.UID,
+				"type":              string(service.Spec.Type),
+				"clusterIP":         service.Spec.ClusterIP,
+				"ports":             service.Spec.Ports,
+				"selector":          service.Spec.Selector,
+				"creationTimestamp": service.CreationTimestamp.Time.Format(time.RFC3339),
+			},
+		}
 
-        jsonResponse, err := json.Marshal(response)
-        if err != nil {
-            return nil, fmt.Errorf("failed to serialize response: %v", err)
-        }
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
 
-        return mcp.NewToolResultText(string(jsonResponse)), nil
-    }
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
 }
 
 // UpdateService returns a handler function for the updateService tool
 func UpdateService(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        if client == nil {
-            return nil, fmt.Errorf("kubernetes client not available")
-        }
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
 
-        args := getArguments(request)
+		args := getArguments(request)
 
-        name, exists := args["name"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: name")
-        }
-        nameStr, ok := name.(string)
-        if !ok || nameStr == "" {
-            return nil, fmt.Errorf("name must be a non-empty string")
-        }
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
 
-        manifest, exists := args["manifest"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: manifest")
-        }
-        manifestStr, ok := manifest.(string)
-        if !ok || manifestStr == "" {
-            return nil, fmt.Errorf("manifest must be a non-empty string")
-        }
+		manifest, exists := args["manifest"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: manifest")
+		}
+		manifestStr, ok := manifest.(string)
+		if !ok || manifestStr == "" {
+			return nil, fmt.Errorf("manifest must be a non-empty string")
+		}
 
-        namespace := "default"
-        if ns, exists := args["namespace"]; exists {
-            if nsStr, ok := ns.(string); ok && nsStr != "" {
-                namespace = nsStr
-            }
-        }
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
 
-        service, err := client.UpdateService(ctx, nameStr, manifestStr, namespace)
-        if err != nil {
-            return nil, fmt.Errorf("failed to update service: %v", err)
-        }
+		service, err := client.UpdateService(ctx, nameStr, manifestStr, namespace)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update service: %v", err)
+		}
 
-        response := map[string]interface{}{
-            "message": fmt.Sprintf("Service '%s' updated successfully", service.Name),
-            "service": map[string]interface{}{
-                "name":             service.Name,
-                "namespace":        service.Namespace,
-                "resourceVersion":  service.ResourceVersion,
-                "type":             string(service.Spec.Type),
-                "clusterIP":        service.Spec.ClusterIP,
-                "ports":            service.Spec.Ports,
-                "selector":         service.Spec.Selector,
-            },
-        }
+		response := map[string]interface{}{
+			"message": fmt.Sprintf("Service '%s' updated successfully", service.Name),
+			"service": map[string]interface{}{
+				"name":            service.Name,
+				"namespace":       service.Namespace,
+				"resourceVersion": service.ResourceVersion,
+				"type":            string(service.Spec.Type),
+				"clusterIP":       service.Spec.ClusterIP,
+				"ports":           service.Spec.Ports,
+				"selector":        service.Spec.Selector,
+			},
+		}
 
-        jsonResponse, err := json.Marshal(response)
-        if err != nil {
-            return nil, fmt.Errorf("failed to serialize response: %v", err)
-        }
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
 
-        return mcp.NewToolResultText(string(jsonResponse)), nil
-    }
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
 }
 
 // DeleteService returns a handler function for the deleteService tool
 func DeleteService(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        if client == nil {
-            return nil, fmt.Errorf("kubernetes client not available")
-        }
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
 
-        args := getArguments(request)
+		args := getArguments(request)
 
-        name, exists := args["name"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: name")
-        }
-        nameStr, ok := name.(string)
-        if !ok || nameStr == "" {
-            return nil, fmt.Errorf("name must be a non-empty string")
-        }
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
 
-        namespace := "default"
-        if ns, exists := args["namespace"]; exists {
-            if nsStr, ok := ns.(string); ok && nsStr != "" {
-                namespace = nsStr
-            }
-        }
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
 
-        err := client.DeleteService(ctx, nameStr, namespace)
-        if err != nil {
-            return nil, fmt.Errorf("failed to delete service: %v", err)
-        }
+		err := client.DeleteService(ctx, nameStr, namespace)
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete service: %v", err)
+		}
 
-        response := map[string]interface{}{
-            "message":     fmt.Sprintf("Service '%s' deleted successfully", nameStr),
-            "serviceName": nameStr,
-            "namespace":   namespace,
-        }
+		response := map[string]interface{}{
+			"message":     fmt.Sprintf("Service '%s' deleted successfully", nameStr),
+			"serviceName": nameStr,
+			"namespace":   namespace,
+		}
 
-        jsonResponse, err := json.Marshal(response)
-        if err != nil {
-            return nil, fmt.Errorf("failed to serialize response: %v", err)
-        }
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
 
-        return mcp.NewToolResultText(string(jsonResponse)), nil
-    }
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
 }
 
 // GetServiceEndpoints returns a handler function for the getServiceEndpoints tool
 func GetServiceEndpoints(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        if client == nil {
-            return nil, fmt.Errorf("kubernetes client not available")
-        }
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
 
-        args := getArguments(request)
+		args := getArguments(request)
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
 
-        name, exists := args["name"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: name")
-        }
-        nameStr, ok := name.(string)
-        if !ok || nameStr == "" {
-            return nil, fmt.Errorf("name must be a non-empty string")
-        }
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
 
-        namespace := "default"
-        if ns, exists := args["namespace"]; exists {
-            if nsStr, ok := ns.(string); ok && nsStr != "" {
-                namespace = nsStr
-            }
-        }
+		endpoints, err := client.GetServiceEndpoints(ctx, nameStr, namespace)
+		if err != nil {
+			// Handle missing endpoints gracefully
+			if strings.Contains(err.Error(), "not found") {
+				response := map[string]interface{}{
+					"serviceName": nameStr,
+					"namespace":   namespace,
+					"endpoints":   nil,
+					"message":     "No endpoints found - service may not have ready pods",
+					"ready":       false,
+				}
+				jsonResponse, _ := json.Marshal(response)
+				return mcp.NewToolResultText(string(jsonResponse)), nil
+			}
+			return nil, fmt.Errorf("failed to get service endpoints: %v", err)
+		}
 
-        endpoints, err := client.GetServiceEndpoints(ctx, nameStr, namespace)
-        if err != nil {
-            return nil, fmt.Errorf("failed to get service endpoints: %v", err)
-        }
+		jsonResponse, err := json.Marshal(endpoints)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
 
-        jsonResponse, err := json.Marshal(endpoints)
-        if err != nil {
-            return nil, fmt.Errorf("failed to serialize response: %v", err)
-        }
-
-        return mcp.NewToolResultText(string(jsonResponse)), nil
-    }
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
 }
 
 // TestServiceConnectivity returns a handler function for the testServiceConnectivity tool
 func TestServiceConnectivity(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        if client == nil {
-            return nil, fmt.Errorf("kubernetes client not available")
-        }
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
 
-        args := getArguments(request)
+		args := getArguments(request)
 
-        name, exists := args["name"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: name")
-        }
-        nameStr, ok := name.(string)
-        if !ok || nameStr == "" {
-            return nil, fmt.Errorf("name must be a non-empty string")
-        }
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
 
-        namespace := "default"
-        if ns, exists := args["namespace"]; exists {
-            if nsStr, ok := ns.(string); ok && nsStr != "" {
-                namespace = nsStr
-            }
-        }
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
 
-        var port int32 = 0
-        if portArg, exists := args["port"]; exists {
-            switch v := portArg.(type) {
-            case float64:
-                port = int32(v)
-            case int:
-                port = int32(v)
-            case int32:
-                port = v
-            }
-        }
+		var port int32 = 0
+		if portArg, exists := args["port"]; exists {
+			switch v := portArg.(type) {
+			case float64:
+				port = int32(v)
+			case int:
+				port = int32(v)
+			case int32:
+				port = v
+			}
+		}
 
-        protocol := "TCP"
-        if protocolArg, exists := args["protocol"]; exists {
-            if protocolStr, ok := protocolArg.(string); ok && protocolStr != "" {
-                protocol = protocolStr
-            }
-        }
+		protocol := "TCP"
+		if protocolArg, exists := args["protocol"]; exists {
+			if protocolStr, ok := protocolArg.(string); ok && protocolStr != "" {
+				protocol = protocolStr
+			}
+		}
 
-        connectivity, err := client.TestServiceConnectivity(ctx, nameStr, namespace, port, protocol)
-        if err != nil {
-            return nil, fmt.Errorf("failed to test service connectivity: %v", err)
-        }
+		connectivity, err := client.TestServiceConnectivity(ctx, nameStr, namespace, port, protocol)
+		if err != nil {
+			return nil, fmt.Errorf("failed to test service connectivity: %v", err)
+		}
 
-        jsonResponse, err := json.Marshal(connectivity)
-        if err != nil {
-            return nil, fmt.Errorf("failed to serialize response: %v", err)
-        }
+		jsonResponse, err := json.Marshal(connectivity)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
 
-        return mcp.NewToolResultText(string(jsonResponse)), nil
-    }
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
 }
 
 // ========== EXTENDED SERVICE HANDLERS ==========
 
 // GetServiceEvents returns a handler function for the getServiceEvents tool
 func GetServiceEvents(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        if client == nil {
-            return nil, fmt.Errorf("kubernetes client not available")
-        }
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
 
-        args := getArguments(request)
+		args := getArguments(request)
 
-        name, exists := args["name"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: name")
-        }
-        nameStr, ok := name.(string)
-        if !ok || nameStr == "" {
-            return nil, fmt.Errorf("name must be a non-empty string")
-        }
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
 
-        namespace := "default"
-        if ns, exists := args["namespace"]; exists {
-            if nsStr, ok := ns.(string); ok && nsStr != "" {
-                namespace = nsStr
-            }
-        }
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
 
-        limit := int64(50)
-        if limitArg, exists := args["limit"]; exists {
-            switch v := limitArg.(type) {
-            case float64:
-                limit = int64(v)
-            case int:
-                limit = int64(v)
-            case int64:
-                limit = v
-            }
-        }
+		limit := int64(50)
+		if limitArg, exists := args["limit"]; exists {
+			switch v := limitArg.(type) {
+			case float64:
+				limit = int64(v)
+			case int:
+				limit = int64(v)
+			case int64:
+				limit = v
+			}
+		}
 
-        events, err := client.GetServiceEvents(ctx, nameStr, namespace, limit)
-        if err != nil {
-            return nil, fmt.Errorf("failed to get service events: %v", err)
-        }
+		events, err := client.GetServiceEvents(ctx, nameStr, namespace, limit)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get service events: %v", err)
+		}
 
-        response := map[string]interface{}{
-            "serviceName": nameStr,
-            "namespace":   namespace,
-            "events":      events,
-            "count":       len(events),
-        }
+		response := map[string]interface{}{
+			"serviceName": nameStr,
+			"namespace":   namespace,
+			"events":      events,
+			"count":       len(events),
+		}
 
-        jsonResponse, err := json.Marshal(response)
-        if err != nil {
-            return nil, fmt.Errorf("failed to serialize response: %v", err)
-        }
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
 
-        return mcp.NewToolResultText(string(jsonResponse)), nil
-    }
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
 }
 
 // GetServiceYAML returns a handler function for the getServiceYAML tool
 func GetServiceYAML(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        if client == nil {
-            return nil, fmt.Errorf("kubernetes client not available")
-        }
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
 
-        args := getArguments(request)
+		args := getArguments(request)
 
-        name, exists := args["name"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: name")
-        }
-        nameStr, ok := name.(string)
-        if !ok || nameStr == "" {
-            return nil, fmt.Errorf("name must be a non-empty string")
-        }
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
 
-        namespace := "default"
-        if ns, exists := args["namespace"]; exists {
-            if nsStr, ok := ns.(string); ok && nsStr != "" {
-                namespace = nsStr
-            }
-        }
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
 
-        export := false
-        if exp, exists := args["export"]; exists {
-            if expBool, ok := exp.(bool); ok {
-                export = expBool
-            }
-        }
+		export := false
+		if exp, exists := args["export"]; exists {
+			if expBool, ok := exp.(bool); ok {
+				export = expBool
+			}
+		}
 
-        yamlData, err := client.GetServiceYAML(ctx, nameStr, namespace, export)
-        if err != nil {
-            return nil, fmt.Errorf("failed to get service YAML: %v", err)
-        }
+		yamlData, err := client.GetServiceYAML(ctx, nameStr, namespace, export)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get service YAML: %v", err)
+		}
 
-        response := map[string]interface{}{
-            "serviceName": nameStr,
-            "namespace":   namespace,
-            "export":      export,
-            "yaml":        yamlData,
-        }
+		response := map[string]interface{}{
+			"serviceName": nameStr,
+			"namespace":   namespace,
+			"export":      export,
+			"yaml":        yamlData,
+		}
 
-        jsonResponse, err := json.Marshal(response)
-        if err != nil {
-            return nil, fmt.Errorf("failed to serialize response: %v", err)
-        }
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
 
-        return mcp.NewToolResultText(string(jsonResponse)), nil
-    }
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
 }
 
 // ExposeDeployment returns a handler function for the exposeDeployment tool
 func ExposeDeployment(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        if client == nil {
-            return nil, fmt.Errorf("kubernetes client not available")
-        }
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
 
-        args := getArguments(request)
+		args := getArguments(request)
 
-        deployment, exists := args["deployment"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: deployment")
-        }
-        deploymentStr, ok := deployment.(string)
-        if !ok || deploymentStr == "" {
-            return nil, fmt.Errorf("deployment must be a non-empty string")
-        }
+		deployment, exists := args["deployment"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: deployment")
+		}
+		deploymentStr, ok := deployment.(string)
+		if !ok || deploymentStr == "" {
+			return nil, fmt.Errorf("deployment must be a non-empty string")
+		}
 
-        port, exists := args["port"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: port")
-        }
-        var portInt32 int32
-        switch v := port.(type) {
-        case float64:
-            portInt32 = int32(v)
-        case int:
-            portInt32 = int32(v)
-        case int32:
-            portInt32 = v
-        default:
-            return nil, fmt.Errorf("port must be a number")
-        }
+		port, exists := args["port"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: port")
+		}
+		var portInt32 int32
+		switch v := port.(type) {
+		case float64:
+			portInt32 = int32(v)
+		case int:
+			portInt32 = int32(v)
+		case int32:
+			portInt32 = v
+		default:
+			return nil, fmt.Errorf("port must be a number")
+		}
 
-        serviceName := deploymentStr
-        if sn, exists := args["serviceName"]; exists {
-            if snStr, ok := sn.(string); ok && snStr != "" {
-                serviceName = snStr
-            }
-        }
+		serviceName := deploymentStr
+		if sn, exists := args["serviceName"]; exists {
+			if snStr, ok := sn.(string); ok && snStr != "" {
+				serviceName = snStr
+			}
+		}
 
-        var targetPort int32 = portInt32
-        if tp, exists := args["targetPort"]; exists {
-            switch v := tp.(type) {
-            case float64:
-                targetPort = int32(v)
-            case int:
-                targetPort = int32(v)
-            case int32:
-                targetPort = v
-            }
-        }
+		var targetPort int32 = portInt32
+		if tp, exists := args["targetPort"]; exists {
+			switch v := tp.(type) {
+			case float64:
+				targetPort = int32(v)
+			case int:
+				targetPort = int32(v)
+			case int32:
+				targetPort = v
+			}
+		}
 
-        serviceType := "ClusterIP"
-        if st, exists := args["serviceType"]; exists {
-            if stStr, ok := st.(string); ok && stStr != "" {
-                serviceType = stStr
-            }
-        }
+		serviceType := "ClusterIP"
+		if st, exists := args["serviceType"]; exists {
+			if stStr, ok := st.(string); ok && stStr != "" {
+				serviceType = stStr
+			}
+		}
 
-        namespace := "default"
-        if ns, exists := args["namespace"]; exists {
-            if nsStr, ok := ns.(string); ok && nsStr != "" {
-                namespace = nsStr
-            }
-        }
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
 
-        service, err := client.ExposeDeployment(ctx, deploymentStr, serviceName, namespace, portInt32, targetPort, serviceType)
-        if err != nil {
-            return nil, fmt.Errorf("failed to expose deployment: %v", err)
-        }
+		service, err := client.ExposeDeployment(ctx, deploymentStr, serviceName, namespace, portInt32, targetPort, serviceType)
+		if err != nil {
+			return nil, fmt.Errorf("failed to expose deployment: %v", err)
+		}
 
-        response := map[string]interface{}{
-            "message": fmt.Sprintf("Deployment '%s' exposed as service '%s'", deploymentStr, serviceName),
-            "service": map[string]interface{}{
-                "name":       service.Name,
-                "namespace":  service.Namespace,
-                "type":       string(service.Spec.Type),
-                "clusterIP":  service.Spec.ClusterIP,
-                "ports":      service.Spec.Ports,
-                "selector":   service.Spec.Selector,
-            },
-        }
+		response := map[string]interface{}{
+			"message": fmt.Sprintf("Deployment '%s' exposed as service '%s'", deploymentStr, serviceName),
+			"service": map[string]interface{}{
+				"name":      service.Name,
+				"namespace": service.Namespace,
+				"type":      string(service.Spec.Type),
+				"clusterIP": service.Spec.ClusterIP,
+				"ports":     service.Spec.Ports,
+				"selector":  service.Spec.Selector,
+			},
+		}
 
-        jsonResponse, err := json.Marshal(response)
-        if err != nil {
-            return nil, fmt.Errorf("failed to serialize response: %v", err)
-        }
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
 
-        return mcp.NewToolResultText(string(jsonResponse)), nil
-    }
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
 }
+
 // PatchService returns a handler function for the patchService tool
 func PatchService(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        if client == nil {
-            return nil, fmt.Errorf("kubernetes client not available")
-        }
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
 
-        args := getArguments(request)
+		args := getArguments(request)
 
-        name, exists := args["name"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: name")
-        }
-        nameStr, ok := name.(string)
-        if !ok || nameStr == "" {
-            return nil, fmt.Errorf("name must be a non-empty string")
-        }
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
 
-        patch, exists := args["patch"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: patch")
-        }
-        patchStr, ok := patch.(string)
-        if !ok || patchStr == "" {
-            return nil, fmt.Errorf("patch must be a non-empty string")
-        }
+		patch, exists := args["patch"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: patch")
+		}
+		patchStr, ok := patch.(string)
+		if !ok || patchStr == "" {
+			return nil, fmt.Errorf("patch must be a non-empty string")
+		}
 
-        namespace := "default"
-        if ns, exists := args["namespace"]; exists {
-            if nsStr, ok := ns.(string); ok && nsStr != "" {
-                namespace = nsStr
-            }
-        }
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
 
-        patchType := "strategic"
-        if pt, exists := args["patchType"]; exists {
-            if ptStr, ok := pt.(string); ok && ptStr != "" {
-                patchType = ptStr
-            }
-        }
+		patchType := "strategic"
+		if pt, exists := args["patchType"]; exists {
+			if ptStr, ok := pt.(string); ok && ptStr != "" {
+				patchType = ptStr
+			}
+		}
 
-        // Convert patch type string to k8s patch type
-        var k8sPatchType types.PatchType
-        switch patchType {
-        case "json":
-            k8sPatchType = types.JSONPatchType
-        case "merge":
-            k8sPatchType = types.MergePatchType
-        case "strategic":
-            k8sPatchType = types.StrategicMergePatchType
-        default:
-            k8sPatchType = types.StrategicMergePatchType
-        }
+		// Convert patch type string to k8s patch type
+		var k8sPatchType types.PatchType
+		switch patchType {
+		case "json":
+			k8sPatchType = types.JSONPatchType
+		case "merge":
+			k8sPatchType = types.MergePatchType
+		case "strategic":
+			k8sPatchType = types.StrategicMergePatchType
+		default:
+			k8sPatchType = types.StrategicMergePatchType
+		}
 
-        service, err := client.PatchService(ctx, nameStr, namespace, []byte(patchStr), k8sPatchType)
-        if err != nil {
-            return nil, fmt.Errorf("failed to patch service: %v", err)
-        }
+		service, err := client.PatchService(ctx, nameStr, namespace, []byte(patchStr), k8sPatchType)
+		if err != nil {
+			return nil, fmt.Errorf("failed to patch service: %v", err)
+		}
 
-        response := map[string]interface{}{
-            "message":     fmt.Sprintf("Service '%s' patched successfully", nameStr),
-            "serviceName": nameStr,
-            "namespace":   namespace,
-            "patchType":   patchType,
-            "service": map[string]interface{}{
-                "name":            service.Name,
-                "resourceVersion": service.ResourceVersion,
-                "type":            string(service.Spec.Type),
-                "clusterIP":       service.Spec.ClusterIP,
-            },
-        }
+		response := map[string]interface{}{
+			"message":     fmt.Sprintf("Service '%s' patched successfully", nameStr),
+			"serviceName": nameStr,
+			"namespace":   namespace,
+			"patchType":   patchType,
+			"service": map[string]interface{}{
+				"name":            service.Name,
+				"resourceVersion": service.ResourceVersion,
+				"type":            string(service.Spec.Type),
+				"clusterIP":       service.Spec.ClusterIP,
+			},
+		}
 
-        jsonResponse, err := json.Marshal(response)
-        if err != nil {
-            return nil, fmt.Errorf("failed to serialize response: %v", err)
-        }
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
 
-        return mcp.NewToolResultText(string(jsonResponse)), nil
-    }
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
 }
 
 // ListAllServices returns a handler function for the listAllServices tool
 func ListAllServices(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        if client == nil {
-            return nil, fmt.Errorf("kubernetes client not available")
-        }
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
 
-        args := getArguments(request)
+		args := getArguments(request)
 
-        labelSelector := ""
-        if selector, exists := args["labelSelector"]; exists {
-            if selectorStr, ok := selector.(string); ok {
-                labelSelector = selectorStr
-            }
-        }
+		labelSelector := ""
+		if selector, exists := args["labelSelector"]; exists {
+			if selectorStr, ok := selector.(string); ok {
+				labelSelector = selectorStr
+			}
+		}
 
-        includeSystem := false
-        if include, exists := args["includeSystem"]; exists {
-            if includeBool, ok := include.(bool); ok {
-                includeSystem = includeBool
-            }
-        }
+		includeSystem := false
+		if include, exists := args["includeSystem"]; exists {
+			if includeBool, ok := include.(bool); ok {
+				includeSystem = includeBool
+			}
+		}
 
-        services, err := client.ListAllServices(ctx, labelSelector, includeSystem)
-        if err != nil {
-            return nil, fmt.Errorf("failed to list all services: %v", err)
-        }
+		services, err := client.ListAllServices(ctx, labelSelector, includeSystem)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list all services: %v", err)
+		}
 
-        jsonResponse, err := json.Marshal(services)
-        if err != nil {
-            return nil, fmt.Errorf("failed to serialize response: %v", err)
-        }
+		jsonResponse, err := json.Marshal(services)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
 
-        return mcp.NewToolResultText(string(jsonResponse)), nil
-    }
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
 }
 
 // GetServiceMetrics returns a handler function for the getServiceMetrics tool
 func GetServiceMetrics(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        if client == nil {
-            return nil, fmt.Errorf("kubernetes client not available")
-        }
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
 
-        args := getArguments(request)
+		args := getArguments(request)
 
-        name, exists := args["name"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: name")
-        }
-        nameStr, ok := name.(string)
-        if !ok || nameStr == "" {
-            return nil, fmt.Errorf("name must be a non-empty string")
-        }
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
 
-        namespace := "default"
-        if ns, exists := args["namespace"]; exists {
-            if nsStr, ok := ns.(string); ok && nsStr != "" {
-                namespace = nsStr
-            }
-        }
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
 
-        metrics, err := client.GetServiceMetrics(ctx, nameStr, namespace)
-        if err != nil {
-            return nil, fmt.Errorf("failed to get service metrics: %v", err)
-        }
+		metrics, err := client.GetServiceMetrics(ctx, nameStr, namespace)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get service metrics: %v", err)
+		}
 
-        jsonResponse, err := json.Marshal(metrics)
-        if err != nil {
-            return nil, fmt.Errorf("failed to serialize response: %v", err)
-        }
+		jsonResponse, err := json.Marshal(metrics)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
 
-        return mcp.NewToolResultText(string(jsonResponse)), nil
-    }
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
 }
 
 // GetServiceTopology returns a handler function for the getServiceTopology tool
 func GetServiceTopology(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        if client == nil {
-            return nil, fmt.Errorf("kubernetes client not available")
-        }
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
 
-        args := getArguments(request)
+		args := getArguments(request)
 
-        name, exists := args["name"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: name")
-        }
-        nameStr, ok := name.(string)
-        if !ok || nameStr == "" {
-            return nil, fmt.Errorf("name must be a non-empty string")
-        }
+		name, exists := args["name"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: name")
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			return nil, fmt.Errorf("name must be a non-empty string")
+		}
 
-        namespace := "default"
-        if ns, exists := args["namespace"]; exists {
-            if nsStr, ok := ns.(string); ok && nsStr != "" {
-                namespace = nsStr
-            }
-        }
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
 
-        topology, err := client.GetServiceTopology(ctx, nameStr, namespace)
-        if err != nil {
-            return nil, fmt.Errorf("failed to get service topology: %v", err)
-        }
+		topology, err := client.GetServiceTopology(ctx, nameStr, namespace)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get service topology: %v", err)
+		}
 
-        jsonResponse, err := json.Marshal(topology)
-        if err != nil {
-            return nil, fmt.Errorf("failed to serialize response: %v", err)
-        }
+		jsonResponse, err := json.Marshal(topology)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
 
-        return mcp.NewToolResultText(string(jsonResponse)), nil
-    }
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
 }
 
 // CreateServiceFromPods returns a handler function for the createServiceFromPods tool
 func CreateServiceFromPods(client *k8s.Client) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        if client == nil {
-            return nil, fmt.Errorf("kubernetes client not available")
-        }
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if client == nil {
+			return nil, fmt.Errorf("kubernetes client not available")
+		}
 
-        args := getArguments(request)
+		args := getArguments(request)
 
-        serviceName, exists := args["serviceName"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: serviceName")
-        }
-        serviceNameStr, ok := serviceName.(string)
-        if !ok || serviceNameStr == "" {
-            return nil, fmt.Errorf("serviceName must be a non-empty string")
-        }
+		serviceName, exists := args["serviceName"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: serviceName")
+		}
+		serviceNameStr, ok := serviceName.(string)
+		if !ok || serviceNameStr == "" {
+			return nil, fmt.Errorf("serviceName must be a non-empty string")
+		}
 
-        labelSelector, exists := args["labelSelector"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: labelSelector")
-        }
-        labelSelectorStr, ok := labelSelector.(string)
-        if !ok || labelSelectorStr == "" {
-            return nil, fmt.Errorf("labelSelector must be a non-empty string")
-        }
+		labelSelector, exists := args["labelSelector"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: labelSelector")
+		}
+		labelSelectorStr, ok := labelSelector.(string)
+		if !ok || labelSelectorStr == "" {
+			return nil, fmt.Errorf("labelSelector must be a non-empty string")
+		}
 
-        port, exists := args["port"]
-        if !exists {
-            return nil, fmt.Errorf("missing required argument: port")
-        }
-        var portInt32 int32
-        switch v := port.(type) {
-        case float64:
-            portInt32 = int32(v)
-        case int:
-            portInt32 = int32(v)
-        case int32:
-            portInt32 = v
-        default:
-            return nil, fmt.Errorf("port must be a number")
-        }
+		port, exists := args["port"]
+		if !exists {
+			return nil, fmt.Errorf("missing required argument: port")
+		}
+		var portInt32 int32
+		switch v := port.(type) {
+		case float64:
+			portInt32 = int32(v)
+		case int:
+			portInt32 = int32(v)
+		case int32:
+			portInt32 = v
+		default:
+			return nil, fmt.Errorf("port must be a number")
+		}
 
-        var targetPort int32 = portInt32
-        if tp, exists := args["targetPort"]; exists {
-            switch v := tp.(type) {
-            case float64:
-                targetPort = int32(v)
-            case int:
-                targetPort = int32(v)
-            case int32:
-                targetPort = v
-            }
-        }
+		var targetPort int32 = portInt32
+		if tp, exists := args["targetPort"]; exists {
+			switch v := tp.(type) {
+			case float64:
+				targetPort = int32(v)
+			case int:
+				targetPort = int32(v)
+			case int32:
+				targetPort = v
+			}
+		}
 
-        serviceType := "ClusterIP"
-        if st, exists := args["serviceType"]; exists {
-            if stStr, ok := st.(string); ok && stStr != "" {
-                serviceType = stStr
-            }
-        }
+		serviceType := "ClusterIP"
+		if st, exists := args["serviceType"]; exists {
+			if stStr, ok := st.(string); ok && stStr != "" {
+				serviceType = stStr
+			}
+		}
 
-        namespace := "default"
-        if ns, exists := args["namespace"]; exists {
-            if nsStr, ok := ns.(string); ok && nsStr != "" {
-                namespace = nsStr
-            }
-        }
+		namespace := "default"
+		if ns, exists := args["namespace"]; exists {
+			if nsStr, ok := ns.(string); ok && nsStr != "" {
+				namespace = nsStr
+			}
+		}
 
-        service, err := client.CreateServiceFromPods(ctx, serviceNameStr, namespace, labelSelectorStr, portInt32, targetPort, serviceType)
-        if err != nil {
-            return nil, fmt.Errorf("failed to create service from pods: %v", err)
-        }
+		service, err := client.CreateServiceFromPods(ctx, serviceNameStr, namespace, labelSelectorStr, portInt32, targetPort, serviceType)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create service from pods: %v", err)
+		}
 
-        response := map[string]interface{}{
-            "message": fmt.Sprintf("Service '%s' created successfully from pod selector '%s'", serviceNameStr, labelSelectorStr),
-            "service": map[string]interface{}{
-                "name":          service.Name,
-                "namespace":     service.Namespace,
-                "type":          string(service.Spec.Type),
-                "clusterIP":     service.Spec.ClusterIP,
-                "ports":         service.Spec.Ports,
-                "selector":      service.Spec.Selector,
-                "labelSelector": labelSelectorStr,
-            },
-        }
+		response := map[string]interface{}{
+			"message": fmt.Sprintf("Service '%s' created successfully from pod selector '%s'", serviceNameStr, labelSelectorStr),
+			"service": map[string]interface{}{
+				"name":          service.Name,
+				"namespace":     service.Namespace,
+				"type":          string(service.Spec.Type),
+				"clusterIP":     service.Spec.ClusterIP,
+				"ports":         service.Spec.Ports,
+				"selector":      service.Spec.Selector,
+				"labelSelector": labelSelectorStr,
+			},
+		}
 
-        jsonResponse, err := json.Marshal(response)
-        if err != nil {
-            return nil, fmt.Errorf("failed to serialize response: %v", err)
-        }
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize response: %v", err)
+		}
 
-        return mcp.NewToolResultText(string(jsonResponse)), nil
-    }
+		return mcp.NewToolResultText(string(jsonResponse)), nil
+	}
 }

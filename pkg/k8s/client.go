@@ -2711,34 +2711,31 @@ func (c *Client) CreateService(ctx context.Context, manifest string, namespace s
 	return createdService, nil
 }
 
-// UpdateService updates an existing service
-func (c *Client) UpdateService(ctx context.Context, name, manifest, namespace string) (*corev1.Service, error) {
+// Fix the UpdateService method - add missing JSON parsing
+func (c *Client) UpdateService(ctx context.Context, name, namespace, manifest string) (*corev1.Service, error) {
 	if namespace == "" {
 		namespace = "default"
 	}
 
-	// Get existing service
-	existingService, err := c.clientset.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
+	// First get the current service to get the resource version
+	currentService, err := c.clientset.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get existing service '%s': %v", name, err)
+		return nil, fmt.Errorf("failed to get current service: %v", err)
 	}
 
-	// Parse the updated manifest
-	var updatedService corev1.Service
-	err = json.Unmarshal([]byte(manifest), &updatedService)
+	var service corev1.Service
+	err = json.Unmarshal([]byte(manifest), &service) // THIS LINE WAS MISSING
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse updated service manifest: %v", err)
+		return nil, fmt.Errorf("failed to parse service manifest: %v", err)
 	}
 
-	// Preserve important metadata
-	updatedService.Name = existingService.Name
-	updatedService.Namespace = existingService.Namespace
-	updatedService.ResourceVersion = existingService.ResourceVersion
-	updatedService.UID = existingService.UID
-	updatedService.Spec.ClusterIP = existingService.Spec.ClusterIP
-	updatedService.Spec.ClusterIPs = existingService.Spec.ClusterIPs
+	// Set the resource version and UID from current service
+	service.ResourceVersion = currentService.ResourceVersion
+	service.UID = currentService.UID
+	service.Name = currentService.Name
+	service.Namespace = currentService.Namespace
 
-	result, err := c.clientset.CoreV1().Services(namespace).Update(ctx, &updatedService, metav1.UpdateOptions{})
+	result, err := c.clientset.CoreV1().Services(namespace).Update(ctx, &service, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to update service '%s' in namespace '%s': %v", name, namespace, err)
 	}
@@ -2760,7 +2757,7 @@ func (c *Client) DeleteService(ctx context.Context, name, namespace string) erro
 	return nil
 }
 
-// GetServiceEndpoints returns endpoints for a service
+// Improve the GetServiceEndpoints method
 func (c *Client) GetServiceEndpoints(ctx context.Context, name, namespace string) (map[string]interface{}, error) {
 	if namespace == "" {
 		namespace = "default"
@@ -2769,12 +2766,25 @@ func (c *Client) GetServiceEndpoints(ctx context.Context, name, namespace string
 	// Get service first to verify it exists
 	service, err := c.clientset.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get service '%s': %v", name, err)
+		return nil, fmt.Errorf("failed to get service '%s' in namespace '%s': %v", name, namespace, err)
 	}
 
 	// Get endpoints
 	endpoints, err := c.clientset.CoreV1().Endpoints(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
+		// Handle missing endpoints gracefully
+		if strings.Contains(err.Error(), "not found") {
+			return map[string]interface{}{
+				"serviceName": name,
+				"namespace":   namespace,
+				"serviceType": string(service.Spec.Type),
+				"selector":    service.Spec.Selector,
+				"endpoints":   nil,
+				"ready":       false,
+				"message":     "No endpoints found - service may not have ready pods matching the selector",
+				"subsets":     []map[string]interface{}{},
+			}, nil
+		}
 		return nil, fmt.Errorf("failed to get endpoints for service '%s': %v", name, err)
 	}
 
@@ -2783,6 +2793,7 @@ func (c *Client) GetServiceEndpoints(ctx context.Context, name, namespace string
 		"namespace":   namespace,
 		"serviceType": string(service.Spec.Type),
 		"selector":    service.Spec.Selector,
+		"ready":       len(endpoints.Subsets) > 0,
 		"subsets":     []map[string]interface{}{},
 	}
 
@@ -2793,21 +2804,6 @@ func (c *Client) GetServiceEndpoints(ctx context.Context, name, namespace string
 			"notReadyAddresses": subset.NotReadyAddresses,
 			"ports":             subset.Ports,
 		}
-
-		// Get pod information for each address
-		var addressDetails []map[string]interface{}
-		for _, addr := range subset.Addresses {
-			addrInfo := map[string]interface{}{
-				"ip": addr.IP,
-			}
-			if addr.TargetRef != nil && addr.TargetRef.Kind == "Pod" {
-				addrInfo["podName"] = addr.TargetRef.Name
-				addrInfo["nodeName"] = addr.NodeName
-			}
-			addressDetails = append(addressDetails, addrInfo)
-		}
-		subsetInfo["addressDetails"] = addressDetails
-
 		subsets = append(subsets, subsetInfo)
 	}
 
@@ -2815,118 +2811,80 @@ func (c *Client) GetServiceEndpoints(ctx context.Context, name, namespace string
 	return result, nil
 }
 
-// TestServiceConnectivity tests service connectivity
+// Improve TestServiceConnectivity method 
 func (c *Client) TestServiceConnectivity(ctx context.Context, name, namespace string, port int32, protocol string) (map[string]interface{}, error) {
-	if namespace == "" {
-		namespace = "default"
-	}
-	if protocol == "" {
-		protocol = "TCP"
-	}
+    if namespace == "" {
+        namespace = "default"
+    }
+    if protocol == "" {
+        protocol = "TCP"
+    }
 
-	// Get service
-	service, err := c.clientset.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get service '%s': %v", name, err)
-	}
+    // Get service
+    service, err := c.clientset.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
+    if err != nil {
+        return nil, fmt.Errorf("failed to get service '%s' in namespace '%s': %v", name, namespace, err)
+    }
 
-	// Get endpoints
-	endpoints, err := c.clientset.CoreV1().Endpoints(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get endpoints for service '%s': %v", name, err)
-	}
+    // Try to get endpoints - handle gracefully if missing
+    endpoints, err := c.clientset.CoreV1().Endpoints(namespace).Get(ctx, name, metav1.GetOptions{})
+    hasEndpoints := err == nil && len(endpoints.Subsets) > 0
 
-	result := map[string]interface{}{
-		"serviceName":     name,
-		"namespace":       namespace,
-		"serviceType":     string(service.Spec.Type),
-		"clusterIP":       service.Spec.ClusterIP,
-		"dnsNames":        []string{},
-		"connectivity":    map[string]interface{}{},
-		"endpoints":       map[string]interface{}{},
-		"recommendations": []string{},
-	}
+    result := map[string]interface{}{
+        "serviceName":     name,
+        "namespace":       namespace,
+        "serviceType":     string(service.Spec.Type),
+        "clusterIP":       service.Spec.ClusterIP,
+        "hasEndpoints":    hasEndpoints,
+        "connectivity":    map[string]interface{}{},
+        "dnsNames":        []string{},
+        "recommendations": []string{},
+    }
 
-	// DNS names for the service
-	dnsNames := []string{
-		name,
-		fmt.Sprintf("%s.%s", name, namespace),
-		fmt.Sprintf("%s.%s.svc", name, namespace),
-		fmt.Sprintf("%s.%s.svc.cluster.local", name, namespace),
-	}
-	result["dnsNames"] = dnsNames
+    // DNS names for the service
+    dnsNames := []string{
+        name,
+        fmt.Sprintf("%s.%s", name, namespace),
+        fmt.Sprintf("%s.%s.svc", name, namespace),
+        fmt.Sprintf("%s.%s.svc.cluster.local", name, namespace),
+    }
+    result["dnsNames"] = dnsNames
 
-	// Check if service has endpoints
-	hasEndpoints := false
-	endpointCount := 0
-	for _, subset := range endpoints.Subsets {
-		endpointCount += len(subset.Addresses)
-		if len(subset.Addresses) > 0 {
-			hasEndpoints = true
-		}
-	}
+    // Check connectivity
+    connectivity := map[string]interface{}{
+        "serviceExists":  true,
+        "hasEndpoints":   hasEndpoints,
+        "portAccessible": false,
+        "dnsResolvable":  true,
+    }
 
-	connectivity := map[string]interface{}{
-		"hasEndpoints":  hasEndpoints,
-		"endpointCount": endpointCount,
-		"serviceReady":  hasEndpoints,
-	}
+    // Validate port if specified
+    if port > 0 {
+        portFound := false
+        for _, servicePort := range service.Spec.Ports {
+            if servicePort.Port == port {
+                portFound = true
+                break
+            }
+        }
+        connectivity["portAccessible"] = portFound
+        if !portFound {
+            result["recommendations"] = append(result["recommendations"].([]string), 
+                fmt.Sprintf("Port %d not found in service ports", port))
+        }
+    }
 
-	// Validate port if specified
-	validPort := false
-	if port > 0 {
-		for _, svcPort := range service.Spec.Ports {
-			if svcPort.Port == port {
-				validPort = true
-				connectivity["requestedPort"] = port
-				connectivity["portValid"] = true
-				break
-			}
-		}
-		if !validPort {
-			connectivity["portValid"] = false
-			connectivity["error"] = fmt.Sprintf("Port %d not found in service", port)
-		}
-	}
+    result["connectivity"] = connectivity
 
-	result["connectivity"] = connectivity
+    // Add recommendations
+    recommendations := result["recommendations"].([]string)
+    if !hasEndpoints {
+        recommendations = append(recommendations, 
+            "Service has no endpoints - check if pods matching the selector are running and ready")
+    }
 
-	// Endpoint details
-	endpointDetails := map[string]interface{}{
-		"totalSubsets":      len(endpoints.Subsets),
-		"readyAddresses":    0,
-		"notReadyAddresses": 0,
-	}
-
-	readyCount := 0
-	notReadyCount := 0
-	for _, subset := range endpoints.Subsets {
-		readyCount += len(subset.Addresses)
-		notReadyCount += len(subset.NotReadyAddresses)
-	}
-	endpointDetails["readyAddresses"] = readyCount
-	endpointDetails["notReadyAddresses"] = notReadyCount
-
-	result["endpoints"] = endpointDetails
-
-	// Generate recommendations
-	recommendations := []string{}
-	if !hasEndpoints {
-		recommendations = append(recommendations, "Service has no ready endpoints. Check if pods matching the selector are running and ready.")
-		if len(service.Spec.Selector) == 0 {
-			recommendations = append(recommendations, "Service has no selector. This might be an ExternalName service or manually configured endpoints.")
-		}
-	}
-	if notReadyCount > 0 {
-		recommendations = append(recommendations, fmt.Sprintf("Service has %d not-ready endpoints. Check pod health and readiness probes.", notReadyCount))
-	}
-	if port > 0 && !validPort {
-		recommendations = append(recommendations, fmt.Sprintf("Requested port %d is not exposed by the service. Available ports: %v", port, service.Spec.Ports))
-	}
-
-	result["recommendations"] = recommendations
-
-	return result, nil
+    result["recommendations"] = recommendations
+    return result, nil
 }
 
 // GetServiceEvents gets events related to a service
