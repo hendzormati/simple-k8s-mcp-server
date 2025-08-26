@@ -547,3 +547,172 @@ func GetPodsHealthStatusTool() mcp.Tool {
 		mcp.WithString("labelSelector", mcp.Description("Optional label selector to filter pods")),
 	)
 }
+
+// ========== SERVICE TOOLS ==========
+
+// ListServicesTool creates a tool for listing services in a namespace
+func ListServicesTool() mcp.Tool {
+	return mcp.NewTool(
+		"listServices",
+		mcp.WithDescription("List all services in a Kubernetes namespace with detailed information"),
+		mcp.WithString("namespace", mcp.Description("The namespace to list services from (default: 'default')")),
+		mcp.WithString("labelSelector", mcp.Description("Optional label selector to filter services (e.g., 'app=nginx,tier=frontend')")),
+	)
+}
+
+// GetServiceTool creates a tool for getting detailed information about a specific service
+func GetServiceTool() mcp.Tool {
+	return mcp.NewTool(
+		"getService",
+		mcp.WithDescription("Get detailed information about a specific service including endpoints"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the service")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the service (default: 'default')")),
+	)
+}
+
+// CreateServiceTool creates a tool for creating a new service
+func CreateServiceTool() mcp.Tool {
+	return mcp.NewTool(
+		"createService",
+		mcp.WithDescription("Create a new service from a JSON manifest"),
+		mcp.WithString("manifest", mcp.Required(), mcp.Description("The service manifest in JSON format")),
+		mcp.WithString("namespace", mcp.Description("The namespace to create the service in (default: 'default')")),
+	)
+}
+
+// UpdateServiceTool creates a tool for updating service configurations
+func UpdateServiceTool() mcp.Tool {
+	return mcp.NewTool(
+		"updateService",
+		mcp.WithDescription("Update an existing service with new specifications"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the service to update")),
+		mcp.WithString("manifest", mcp.Required(), mcp.Description("The updated service manifest in JSON format")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the service (default: 'default')")),
+	)
+}
+
+// DeleteServiceTool creates a tool for deleting a service
+func DeleteServiceTool() mcp.Tool {
+	return mcp.NewTool(
+		"deleteService",
+		mcp.WithDescription("Delete a service"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the service to delete")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the service (default: 'default')")),
+	)
+}
+
+// GetServiceEndpointsTool creates a tool for getting service endpoints
+func GetServiceEndpointsTool() mcp.Tool {
+	return mcp.NewTool(
+		"getServiceEndpoints",
+		mcp.WithDescription("Get endpoints for a specific service showing backend pods"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the service")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the service (default: 'default')")),
+	)
+}
+
+// TestServiceConnectivityTool creates a tool for testing service connectivity
+func TestServiceConnectivityTool() mcp.Tool {
+	return mcp.NewTool(
+		"testServiceConnectivity",
+		mcp.WithDescription("Test service connectivity and DNS resolution within the cluster"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the service to test")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the service (default: 'default')")),
+		mcp.WithNumber("port", mcp.Description("Specific port to test (optional)")),
+		mcp.WithString("protocol", mcp.Description("Protocol to test: TCP, UDP (default: TCP)")),
+	)
+}
+
+// ========== EXTENDED SERVICE TOOLS ==========
+
+// GetServiceEventsTool creates a tool for getting service-related events
+func GetServiceEventsTool() mcp.Tool {
+	return mcp.NewTool(
+		"getServiceEvents",
+		mcp.WithDescription("Get events related to a specific service for debugging"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the service")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the service (default: 'default')")),
+		mcp.WithNumber("limit", mcp.Description("Maximum number of events to return (default: 50)")),
+	)
+}
+
+// GetServiceYAMLTool creates a tool for exporting service as YAML
+func GetServiceYAMLTool() mcp.Tool {
+	return mcp.NewTool(
+		"getServiceYAML",
+		mcp.WithDescription("Export service configuration as YAML"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the service")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the service (default: 'default')")),
+		mcp.WithBoolean("export", mcp.Description("Export for backup (removes cluster-specific fields) (default: false)")),
+	)
+}
+
+// ExposeDeploymentTool creates a tool for exposing a deployment as a service
+func ExposeDeploymentTool() mcp.Tool {
+	return mcp.NewTool(
+		"exposeDeployment",
+		mcp.WithDescription("Expose a deployment as a service"),
+		mcp.WithString("deployment", mcp.Required(), mcp.Description("The name of the deployment to expose")),
+		mcp.WithString("serviceName", mcp.Description("Name for the new service (default: deployment name)")),
+		mcp.WithNumber("port", mcp.Required(), mcp.Description("Port for the service")),
+		mcp.WithNumber("targetPort", mcp.Description("Target port on the pods (default: same as port)")),
+		mcp.WithString("serviceType", mcp.Description("Service type: ClusterIP, NodePort, LoadBalancer (default: ClusterIP)")),
+		mcp.WithString("namespace", mcp.Description("The namespace (default: 'default')")),
+	)
+}
+
+// PatchServiceTool creates a tool for applying patches to services
+func PatchServiceTool() mcp.Tool {
+	return mcp.NewTool(
+		"patchService",
+		mcp.WithDescription("Apply a JSON patch to a service"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the service")),
+		mcp.WithString("patch", mcp.Required(), mcp.Description("JSON patch to apply")),
+		mcp.WithString("patchType", mcp.Description("Type of patch: 'json', 'merge', or 'strategic' (default: 'strategic')")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the service (default: 'default')")),
+	)
+}
+
+// ListAllServicesTool creates a tool for listing services across all namespaces
+func ListAllServicesTool() mcp.Tool {
+	return mcp.NewTool(
+		"listAllServices",
+		mcp.WithDescription("List services across all namespaces with summary information"),
+		mcp.WithString("labelSelector", mcp.Description("Optional label selector to filter services")),
+		mcp.WithBoolean("includeSystem", mcp.Description("Include system namespaces (default: false)")),
+	)
+}
+
+// GetServiceMetricsTool creates a tool for getting service metrics
+func GetServiceMetricsTool() mcp.Tool {
+	return mcp.NewTool(
+		"getServiceMetrics",
+		mcp.WithDescription("Get service metrics including connection counts and traffic"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the service")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the service (default: 'default')")),
+	)
+}
+
+// GetServiceTopologyTool creates a tool for getting service topology
+func GetServiceTopologyTool() mcp.Tool {
+	return mcp.NewTool(
+		"getServiceTopology",
+		mcp.WithDescription("Get service topology showing relationships with pods and deployments"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The name of the service")),
+		mcp.WithString("namespace", mcp.Description("The namespace of the service (default: 'default')")),
+	)
+}
+
+// CreateServiceFromPodsTool creates a tool for creating services from pod selectors
+func CreateServiceFromPodsTool() mcp.Tool {
+	return mcp.NewTool(
+		"createServiceFromPods",
+		mcp.WithDescription("Create a service that selects specific pods"),
+		mcp.WithString("serviceName", mcp.Required(), mcp.Description("Name for the new service")),
+		mcp.WithString("labelSelector", mcp.Required(), mcp.Description("Label selector to match pods (e.g., 'app=nginx')")),
+		mcp.WithNumber("port", mcp.Required(), mcp.Description("Port for the service")),
+		mcp.WithNumber("targetPort", mcp.Description("Target port on the pods (default: same as port)")),
+		mcp.WithString("serviceType", mcp.Description("Service type: ClusterIP, NodePort, LoadBalancer (default: ClusterIP)")),
+		mcp.WithString("namespace", mcp.Description("The namespace (default: 'default')")),
+	)
+}

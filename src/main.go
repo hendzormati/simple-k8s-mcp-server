@@ -171,6 +171,25 @@ func registerAllTools(mcpServer *server.MCPServer, k8sClient *k8s.Client) {
 	mcpServer.AddTool(tools.GetDeploymentMetricsTool(), handlers.GetDeploymentMetrics(k8sClient))
 	mcpServer.AddTool(tools.ListAllDeploymentsTool(), handlers.ListAllDeployments(k8sClient))
 	mcpServer.AddTool(tools.ScaleAllDeploymentsTool(), handlers.ScaleAllDeployments(k8sClient))
+
+	// Core Service tools
+	mcpServer.AddTool(tools.ListServicesTool(), handlers.ListServices(k8sClient))
+	mcpServer.AddTool(tools.GetServiceTool(), handlers.GetService(k8sClient))
+	mcpServer.AddTool(tools.CreateServiceTool(), handlers.CreateService(k8sClient))
+	mcpServer.AddTool(tools.UpdateServiceTool(), handlers.UpdateService(k8sClient))
+	mcpServer.AddTool(tools.DeleteServiceTool(), handlers.DeleteService(k8sClient))
+	mcpServer.AddTool(tools.GetServiceEndpointsTool(), handlers.GetServiceEndpoints(k8sClient))
+	mcpServer.AddTool(tools.TestServiceConnectivityTool(), handlers.TestServiceConnectivity(k8sClient))
+
+	// Extended Service tools
+	mcpServer.AddTool(tools.GetServiceEventsTool(), handlers.GetServiceEvents(k8sClient))
+	mcpServer.AddTool(tools.GetServiceYAMLTool(), handlers.GetServiceYAML(k8sClient))
+	mcpServer.AddTool(tools.ExposeDeploymentTool(), handlers.ExposeDeployment(k8sClient))
+	mcpServer.AddTool(tools.PatchServiceTool(), handlers.PatchService(k8sClient))
+	mcpServer.AddTool(tools.ListAllServicesTool(), handlers.ListAllServices(k8sClient))
+	mcpServer.AddTool(tools.GetServiceMetricsTool(), handlers.GetServiceMetrics(k8sClient))
+	mcpServer.AddTool(tools.GetServiceTopologyTool(), handlers.GetServiceTopology(k8sClient))
+	mcpServer.AddTool(tools.CreateServiceFromPodsTool(), handlers.CreateServiceFromPods(k8sClient))
 }
 
 func printToolsOverview() {
@@ -260,6 +279,22 @@ func printToolsOverview() {
 	fmt.Println("    • scaleAllDeployments    - Scale all in namespace")
 	fmt.Println()
 
+	    // Service Management Section
+    fmt.Println("🟠 SERVICE MANAGEMENT")
+    fmt.Println("  📊 Core Operations:")
+    fmt.Println("    • listServices        - List services in namespace")
+    fmt.Println("    • getService          - Get service details")
+    fmt.Println("    • createService       - Create new service")
+    fmt.Println("    • updateService       - Update service configuration")
+    fmt.Println("    • deleteService       - Delete service")
+    fmt.Println()
+    fmt.Println("  🔗 Networking & Connectivity:")
+    fmt.Println("    • getServiceEndpoints     - Get service endpoints")
+    fmt.Println("    • testServiceConnectivity - Test service connectivity")
+    fmt.Println("    • exposeDeployment        - Expose deployment as service")
+    fmt.Println("    • createServiceFromPods   - Create service from pod selector")
+    fmt.Println()
+	
 	// Cluster Overview Section
 	fmt.Println("🔴 CLUSTER OVERVIEW")
 	fmt.Println("  🌍 Global Operations:")
