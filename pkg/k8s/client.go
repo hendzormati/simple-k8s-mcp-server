@@ -2599,9 +2599,10 @@ func (c *Client) ListServices(ctx context.Context, namespace string) ([]map[stri
 		}
 
 		// Add external access information
-		if service.Spec.Type == corev1.ServiceTypeNodePort {
+		switch service.Spec.Type {
+case corev1.ServiceTypeNodePort:
 			serviceInfo["nodePort"] = service.Spec.Ports
-		} else if service.Spec.Type == corev1.ServiceTypeLoadBalancer {
+		case corev1.ServiceTypeLoadBalancer:
 			serviceInfo["loadBalancerIP"] = service.Spec.LoadBalancerIP
 			serviceInfo["loadBalancerIngress"] = service.Status.LoadBalancer.Ingress
 		}
