@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  mcp-server-stdio:
+    build: .
+    container_name: k8s-mcp-server-stdio
+    command: ["./main", "--mode", "stdio"]
+    volumes:
+      - ~/.kube/config:/root/.kube/config:ro
+    environment:
+      - KUBECONFIG=/root/.kube/config
+    network_mode: host
+    stdin_open: true
+    tty: true
+
+  mcp-server-sse:
+    build: .
+    container_name: k8s-mcp-server-sse
+    command: ["./main", "--mode", "sse", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ~/.kube/config:/root/.kube/config:ro
+    environment:
+      - KUBECONFIG=/root/.kube/config
+    restart: unless-stopped

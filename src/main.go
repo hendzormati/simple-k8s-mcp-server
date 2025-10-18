@@ -279,22 +279,22 @@ func printToolsOverview() {
 	fmt.Println("    • scaleAllDeployments    - Scale all in namespace")
 	fmt.Println()
 
-	    // Service Management Section
-    fmt.Println("🟠 SERVICE MANAGEMENT")
-    fmt.Println("  📊 Core Operations:")
-    fmt.Println("    • listServices        - List services in namespace")
-    fmt.Println("    • getService          - Get service details")
-    fmt.Println("    • createService       - Create new service")
-    fmt.Println("    • updateService       - Update service configuration")
-    fmt.Println("    • deleteService       - Delete service")
-    fmt.Println()
-    fmt.Println("  🔗 Networking & Connectivity:")
-    fmt.Println("    • getServiceEndpoints     - Get service endpoints")
-    fmt.Println("    • testServiceConnectivity - Test service connectivity")
-    fmt.Println("    • exposeDeployment        - Expose deployment as service")
-    fmt.Println("    • createServiceFromPods   - Create service from pod selector")
-    fmt.Println()
-	
+	// Service Management Section
+	fmt.Println("🟠 SERVICE MANAGEMENT")
+	fmt.Println("  📊 Core Operations:")
+	fmt.Println("    • listServices        - List services in namespace")
+	fmt.Println("    • getService          - Get service details")
+	fmt.Println("    • createService       - Create new service")
+	fmt.Println("    • updateService       - Update service configuration")
+	fmt.Println("    • deleteService       - Delete service")
+	fmt.Println()
+	fmt.Println("  🔗 Networking & Connectivity:")
+	fmt.Println("    • getServiceEndpoints     - Get service endpoints")
+	fmt.Println("    • testServiceConnectivity - Test service connectivity")
+	fmt.Println("    • exposeDeployment        - Expose deployment as service")
+	fmt.Println("    • createServiceFromPods   - Create service from pod selector")
+	fmt.Println()
+
 	// Cluster Overview Section
 	fmt.Println("🔴 CLUSTER OVERVIEW")
 	fmt.Println("  🌍 Global Operations:")
@@ -308,5 +308,5 @@ func printToolsOverview() {
 }
 
 func getTotalToolCount() int {
-	return 42 // Update this count as you add more tools
+	return 66 // Update this count as you add more tools
 }
